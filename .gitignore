@@ -1,0 +1,7 @@
+MDK-ARM/QINGMO666/
+MDK-ARM/DebugConfig/
+*.bak
+*.tmp
+*.log
+Thumbs.db
+desktop.ini
