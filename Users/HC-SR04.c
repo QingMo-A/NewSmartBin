@@ -5,7 +5,7 @@
 #define HCSR04_WAIT_TIMEOUT_US      30000U
 #define HCSR04_SOUND_SPEED_DIVISOR  58.0f
 
-static float g_hcsr04_distance_cm = -1.0f;
+float g_hcsr04_distance_cm = -1.0f;
 static uint32_t g_hcsr04_pulse_width_us = 0U;
 static bool g_hcsr04_data_valid = false;
 
@@ -44,6 +44,7 @@ bool HCSR04_Measure(void)
   HCSR04_DelayUs(HCSR04_TRIGGER_PULSE_US);
   HAL_GPIO_WritePin(Trig_GPIO_Port, Trig_Pin, GPIO_PIN_RESET);
 
+  //模块返回数值时，echo会拉高
   start_tick = HCSR04_GetTickUs();
   while (HAL_GPIO_ReadPin(Echo_GPIO_Port, Echo_Pin) == GPIO_PIN_RESET)
   {
