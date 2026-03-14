@@ -8,6 +8,7 @@
 float g_hcsr04_distance_cm = -1.0f;
 static uint32_t g_hcsr04_pulse_width_us = 0U;
 static bool g_hcsr04_data_valid = false;
+uint32_t start_tick;
 
 static uint32_t HCSR04_GetTickUs(void)
 {
@@ -36,7 +37,7 @@ void HCSR04_Init(void)
 
 bool HCSR04_Measure(void)
 {
-  uint32_t start_tick;
+  // uint32_t start_tick;
 
   HAL_GPIO_WritePin(Trig_GPIO_Port, Trig_Pin, GPIO_PIN_RESET);
   HCSR04_DelayUs(2U);

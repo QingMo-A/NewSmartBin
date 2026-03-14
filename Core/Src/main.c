@@ -18,12 +18,20 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dcmi.h"
+#include "i2c.h"
 #include "tim.h"
+#include "usart.h"
 #include "gpio.h"
+
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "HC-SR04.h"
+#include "i2c.h"
+#include "dcmi.h"
+#include <stdio.h>
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -93,8 +101,19 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM2_Init();
+  MX_USART1_UART_Init();
+  MX_DCMI_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
   HCSR04_Init();
+
+  char msg[] = "hello\r\n";
+
+  uint8_t tx_cmd[] = "AT+VERSION\r\n";
+  uint8_t rx_char;
+  uint8_t rx_buf[64];
+  uint8_t i = 0;
+
 
   /* USER CODE END 2 */
 
@@ -103,13 +122,41 @@ int main(void)
   while (1)
   {
     static uint32_t last_measure_tick = 0U;
+    static uint8_t object_present = 0;
 
-    if ((HAL_GetTick() - last_measure_tick) >= 100U)
+    if ((HAL_GetTick() - last_measure_tick) >= 200U)
     {
-      last_measure_tick = HAL_GetTick();
-      HCSR04_Measure();
-    }
+        last_measure_tick = HAL_GetTick();
 
+        if (HCSR04_Measure())
+        {
+            float distance = HCSR04_GetDistanceCm();
+
+            if (distance > 0 && distance < 20.0f)
+            {
+                if (object_present == 0)
+                {
+                    object_present = 1;
+
+                    char msg[64];
+                    snprintf(msg, sizeof(msg), "object detected, distance = %.2f cm\r\n", distance);
+                    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
+
+                    for (int j = 0; j < 2; j++)
+                    {
+                        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+                        HAL_Delay(200);
+                        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+                        HAL_Delay(200);
+                    }
+                }
+            }
+            else
+            {
+                object_present = 0;
+            }
+        }
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

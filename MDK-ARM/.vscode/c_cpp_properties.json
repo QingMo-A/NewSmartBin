@@ -3,15 +3,15 @@
         {
             "name": "QINGMO666",
             "includePath": [
-                "d:\\Desktop\\QINGMO666\\Core\\Inc",
-                "d:\\Desktop\\QINGMO666\\Drivers\\STM32H7xx_HAL_Driver\\Inc",
-                "d:\\Desktop\\QINGMO666\\Drivers\\STM32H7xx_HAL_Driver\\Inc\\Legacy",
-                "d:\\Desktop\\QINGMO666\\Drivers\\CMSIS\\Device\\ST\\STM32H7xx\\Include",
-                "d:\\Desktop\\QINGMO666\\Drivers\\CMSIS\\Include",
-                "d:\\Desktop\\QINGMO666\\Users",
-                "d:\\Desktop\\QINGMO666\\MDK-ARM",
-                "d:\\Desktop\\QINGMO666\\Core\\Src",
-                "d:\\Desktop\\QINGMO666\\Drivers\\STM32H7xx_HAL_Driver\\Src"
+                "f:\\STM32\\NewSmartBin\\Core\\Inc",
+                "f:\\STM32\\NewSmartBin\\Drivers\\STM32H7xx_HAL_Driver\\Inc",
+                "f:\\STM32\\NewSmartBin\\Drivers\\STM32H7xx_HAL_Driver\\Inc\\Legacy",
+                "f:\\STM32\\NewSmartBin\\Drivers\\CMSIS\\Device\\ST\\STM32H7xx\\Include",
+                "f:\\STM32\\NewSmartBin\\Drivers\\CMSIS\\Include",
+                "f:\\STM32\\NewSmartBin\\Users",
+                "f:\\STM32\\NewSmartBin\\MDK-ARM",
+                "f:\\STM32\\NewSmartBin\\Core\\Src",
+                "f:\\STM32\\NewSmartBin\\Drivers\\STM32H7xx_HAL_Driver\\Src"
             ],
             "defines": [
                 "USE_PWR_LDO_SUPPLY",
