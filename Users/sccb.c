@@ -14,6 +14,20 @@ static void SCCB_Delay(void)
   }
 }
 
+static void SCCB_BusReset(void)
+{
+  SCCB_SDA_HIGH();
+  SCCB_Delay();
+
+  for (uint8_t pulse = 0U; pulse < 9U; ++pulse)
+  {
+    SCCB_SCL_HIGH();
+    SCCB_Delay();
+    SCCB_SCL_LOW();
+    SCCB_Delay();
+  }
+}
+
 static void SCCB_SendByte(uint8_t data)
 {
   for (uint8_t bit = 0U; bit < 8U; ++bit)
@@ -116,6 +130,7 @@ static void SCCB_NoAck(void)
 
 void SCCB_Init(void)
 {
+  SCCB_BusReset();
   SCCB_SCL_HIGH();
   SCCB_SDA_HIGH();
   SCCB_Stop();
@@ -179,10 +194,9 @@ HAL_StatusTypeDef SCCB_ReadReg(uint8_t reg, uint8_t *value)
     return HAL_ERROR;
   }
 
-  SCCB_Stop();
-
   if (SCCB_Start() != HAL_OK)
   {
+    SCCB_Stop();
     return HAL_BUSY;
   }
 

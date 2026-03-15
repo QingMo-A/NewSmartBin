@@ -239,11 +239,26 @@ HAL_StatusTypeDef OV7725_ReadID(OV7725_IdTypeDef *id)
 
 HAL_StatusTypeDef OV7725_Init(OV7725_IdTypeDef *id)
 {
-  SCCB_Init();
-  HAL_GPIO_WritePin(CAMERA_PWDN_GPIO_Port, CAMERA_PWDN_Pin, GPIO_PIN_RESET);
-  HAL_Delay(10U);
+  HAL_StatusTypeDef status = HAL_ERROR;
 
-  if (OV7725_ReadID(id) != HAL_OK)
+  SCCB_Init();
+  HAL_GPIO_WritePin(CAMERA_PWDN_GPIO_Port, CAMERA_PWDN_Pin, GPIO_PIN_SET);
+  HAL_Delay(5U);
+  HAL_GPIO_WritePin(CAMERA_PWDN_GPIO_Port, CAMERA_PWDN_Pin, GPIO_PIN_RESET);
+  HAL_Delay(20U);
+
+  for (uint32_t attempt = 0U; attempt < 3U; ++attempt)
+  {
+    status = OV7725_ReadID(id);
+    if (status == HAL_OK)
+    {
+      break;
+    }
+
+    HAL_Delay(10U);
+  }
+
+  if (status != HAL_OK)
   {
     return HAL_ERROR;
   }

@@ -52,6 +52,12 @@
 
 /* USER CODE BEGIN PV */
 volatile uint8_t g_camera_status = 0U;
+volatile uint8_t g_camera_debug_stage = 0U;
+volatile int32_t g_camera_last_capture_status = -1;
+volatile uint8_t g_camera_pid = 0U;
+volatile uint8_t g_camera_ver = 0U;
+volatile uint8_t g_camera_midh = 0U;
+volatile uint8_t g_camera_midl = 0U;
 static OV7725_IdTypeDef g_ov7725_id = {0};
 static uint8_t g_ov7725_ready = 0U;
 static uint32_t g_last_capture_tick = 0U;
@@ -80,10 +86,17 @@ static void App_CameraInit(void)
   char message[96];
 
   g_camera_status = 0U;
+  g_camera_debug_stage = 1U;
 
   HAL_Delay(50U);
+  g_camera_debug_stage = 2U;
   if (OV7725_Init(&g_ov7725_id) != HAL_OK)
   {
+    g_camera_pid = g_ov7725_id.pid;
+    g_camera_ver = g_ov7725_id.ver;
+    g_camera_midh = g_ov7725_id.midh;
+    g_camera_midl = g_ov7725_id.midl;
+    g_camera_debug_stage = 3U;
     snprintf(message, sizeof(message),
              "OV7725 init failed, PID=0x%02X VER=0x%02X MID=0x%02X%02X\r\n",
              g_ov7725_id.pid, g_ov7725_id.ver, g_ov7725_id.midh, g_ov7725_id.midl);
@@ -91,7 +104,12 @@ static void App_CameraInit(void)
     return;
   }
 
+  g_camera_pid = g_ov7725_id.pid;
+  g_camera_ver = g_ov7725_id.ver;
+  g_camera_midh = g_ov7725_id.midh;
+  g_camera_midl = g_ov7725_id.midl;
   g_ov7725_ready = 1U;
+  g_camera_debug_stage = 4U;
   snprintf(message, sizeof(message),
            "OV7725 ready, PID=0x%02X VER=0x%02X MID=0x%02X%02X\r\n",
            g_ov7725_id.pid, g_ov7725_id.ver, g_ov7725_id.midh, g_ov7725_id.midl);
@@ -107,19 +125,24 @@ static void App_CameraCaptureAndReport(void)
   if (g_ov7725_ready == 0U)
   {
     g_camera_status = 0U;
+    g_camera_debug_stage = 5U;
     return;
   }
 
+  g_camera_debug_stage = 6U;
   status = OV7725_CaptureSnapshot(1000U);
+  g_camera_last_capture_status = (int32_t)status;
   if (status != HAL_OK)
   {
     g_camera_status = 0U;
+    g_camera_debug_stage = 7U;
     snprintf(message, sizeof(message), "OV7725 snapshot failed, status=%d\r\n", (int)status);
     App_Log(message);
     return;
   }
 
   g_camera_status = 1U;
+  g_camera_debug_stage = 8U;
   frame_buffer = OV7725_GetFrameBuffer();
   snprintf(message, sizeof(message),
            "OV7725 snapshot ok, frames=%lu data=%08lX %08lX %08lX %08lX\r\n",
