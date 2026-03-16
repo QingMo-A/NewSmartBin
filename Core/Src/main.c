@@ -18,8 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "dcmi.h"
-#include "dma.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -27,7 +25,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "HC-SR04.h"
-#include "ov7725.h"
+#include "Motor_L9110S.h"
+#include "Motor_Servo.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -51,16 +50,6 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-volatile uint8_t g_camera_status = 0U;
-volatile uint8_t g_camera_debug_stage = 0U;
-volatile int32_t g_camera_last_capture_status = -1;
-volatile uint8_t g_camera_pid = 0U;
-volatile uint8_t g_camera_ver = 0U;
-volatile uint8_t g_camera_midh = 0U;
-volatile uint8_t g_camera_midl = 0U;
-static OV7725_IdTypeDef g_ov7725_id = {0};
-static uint8_t g_ov7725_ready = 0U;
-static uint32_t g_last_capture_tick = 0U;
 
 /* USER CODE END PV */
 
@@ -69,8 +58,6 @@ void SystemClock_Config(void);
 static void MPU_Config(void);
 /* USER CODE BEGIN PFP */
 static void App_Log(const char *message);
-static void App_CameraInit(void);
-static void App_CameraCaptureAndReport(void);
 
 /* USER CODE END PFP */
 
@@ -81,78 +68,8 @@ static void App_Log(const char *message)
   HAL_UART_Transmit(&huart1, (uint8_t *)message, (uint16_t)strlen(message), 200U);
 }
 
-static void App_CameraInit(void)
-{
-  char message[96];
 
-  g_camera_status = 0U;
-  g_camera_debug_stage = 1U;
 
-  HAL_Delay(50U);
-  g_camera_debug_stage = 2U;
-  if (OV7725_Init(&g_ov7725_id) != HAL_OK)
-  {
-    g_camera_pid = g_ov7725_id.pid;
-    g_camera_ver = g_ov7725_id.ver;
-    g_camera_midh = g_ov7725_id.midh;
-    g_camera_midl = g_ov7725_id.midl;
-    g_camera_debug_stage = 3U;
-    snprintf(message, sizeof(message),
-             "OV7725 init failed, PID=0x%02X VER=0x%02X MID=0x%02X%02X\r\n",
-             g_ov7725_id.pid, g_ov7725_id.ver, g_ov7725_id.midh, g_ov7725_id.midl);
-    App_Log(message);
-    return;
-  }
-
-  g_camera_pid = g_ov7725_id.pid;
-  g_camera_ver = g_ov7725_id.ver;
-  g_camera_midh = g_ov7725_id.midh;
-  g_camera_midl = g_ov7725_id.midl;
-  g_ov7725_ready = 1U;
-  g_camera_debug_stage = 4U;
-  snprintf(message, sizeof(message),
-           "OV7725 ready, PID=0x%02X VER=0x%02X MID=0x%02X%02X\r\n",
-           g_ov7725_id.pid, g_ov7725_id.ver, g_ov7725_id.midh, g_ov7725_id.midl);
-  App_Log(message);
-}
-
-static void App_CameraCaptureAndReport(void)
-{
-  char message[128];
-  const uint32_t *frame_buffer;
-  HAL_StatusTypeDef status;
-
-  if (g_ov7725_ready == 0U)
-  {
-    g_camera_status = 0U;
-    g_camera_debug_stage = 5U;
-    return;
-  }
-
-  g_camera_debug_stage = 6U;
-  status = OV7725_CaptureSnapshot(1000U);
-  g_camera_last_capture_status = (int32_t)status;
-  if (status != HAL_OK)
-  {
-    g_camera_status = 0U;
-    g_camera_debug_stage = 7U;
-    snprintf(message, sizeof(message), "OV7725 snapshot failed, status=%d\r\n", (int)status);
-    App_Log(message);
-    return;
-  }
-
-  g_camera_status = 1U;
-  g_camera_debug_stage = 8U;
-  frame_buffer = OV7725_GetFrameBuffer();
-  snprintf(message, sizeof(message),
-           "OV7725 snapshot ok, frames=%lu data=%08lX %08lX %08lX %08lX\r\n",
-           (unsigned long)OV7725_GetCapturedFrameCount(),
-           (unsigned long)frame_buffer[0],
-           (unsigned long)frame_buffer[1],
-           (unsigned long)frame_buffer[2],
-           (unsigned long)frame_buffer[3]);
-  App_Log(message);
-}
 
 /* USER CODE END 0 */
 
@@ -188,15 +105,15 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
-  MX_DCMI_Init();
+  MX_TIM1_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   HCSR04_Init();
+  Motor_Init();
+  Servo_Init();
   App_Log("boot\r\n");
-  App_CameraInit();
-  App_CameraCaptureAndReport();
 
 
   /* USER CODE END 2 */
@@ -208,12 +125,7 @@ int main(void)
     static uint32_t last_measure_tick = 0U;
     static uint8_t object_present = 0;
 
-    if ((g_ov7725_ready != 0U) && ((HAL_GetTick() - g_last_capture_tick) >= 2000U))
-    {
-        g_last_capture_tick = HAL_GetTick();
-        App_CameraCaptureAndReport();
-    }
-
+    
     if ((HAL_GetTick() - last_measure_tick) >= 200U)
     {
         last_measure_tick = HAL_GetTick();
