@@ -58,6 +58,8 @@ void SystemClock_Config(void);
 static void MPU_Config(void);
 /* USER CODE BEGIN PFP */
 static void App_Log(const char *message);
+static void BT_ProcessCommand(const char *cmd);
+
 
 /* USER CODE END PFP */
 
@@ -68,7 +70,103 @@ static void App_Log(const char *message)
   HAL_UART_Transmit(&huart1, (uint8_t *)message, (uint16_t)strlen(message), 200U);
 }
 
+static void BT_ProcessCommand(const char *cmd)
+{
+    if (cmd == NULL || strlen(cmd) != 5)
+    {
+        App_Log("invalid cmd\r\n");
+        return;
+    }
 
+    /* 舵机测试命令：ta000 */
+    if (strncmp(cmd, "ta000", 5) == 0)
+    {
+        App_Log("servo test\r\n");
+        Servo_Test();
+        return;
+    }
+
+    /* 舵机自定义角度命令：sa000 ~ sa180 */
+    if (cmd[0] == 's' && cmd[1] == 'a' &&
+        cmd[2] >= '0' && cmd[2] <= '9' &&
+        cmd[3] >= '0' && cmd[3] <= '9' &&
+        cmd[4] >= '0' && cmd[4] <= '9')
+    {
+        int angle = (cmd[2] - '0') * 100 +
+                    (cmd[3] - '0') * 10 +
+                    (cmd[4] - '0');
+
+        if (angle < 0 || angle > 180)
+        {
+            App_Log("angle out of range\r\n");
+            return;
+        }
+
+        char msg[64];
+        snprintf(msg, sizeof(msg), "servo angle=%d\r\n", angle);
+        App_Log(msg);
+
+        Servo_SetAngle(1, angle);
+        return;
+    }
+
+    /* 舵机开盖命令：op000 */
+    if (strncmp(cmd, "op000", 5) == 0)
+    {
+        App_Log("servo open\r\n");
+        Servo_Open();
+        return;
+    }
+
+    /* 舵机关盖命令：cl000 */
+    if (strncmp(cmd, "cl000", 5) == 0)
+    {
+        App_Log("servo close\r\n");
+        Servo_Close();
+        return;
+    }
+
+    /* 电机移动命令：fs1p5 / bs2p3 */
+    char dir = cmd[0];
+    char s_flag = cmd[1];
+    char sec_char = cmd[2];
+    char p_flag = cmd[3];
+    char dec_char = cmd[4];
+
+    if ((dir != 'f' && dir != 'b') ||
+        s_flag != 's' ||
+        p_flag != 'p' ||
+        sec_char < '0' || sec_char > '9' ||
+        dec_char < '0' || dec_char > '9')
+    {
+        App_Log("invalid format\r\n");
+        return;
+    }
+
+    uint32_t move_time_ms = (uint32_t)(sec_char - '0') * 1000U
+                          + (uint32_t)(dec_char - '0') * 100U;
+
+    char msg[64];
+    snprintf(msg, sizeof(msg), "cmd=%s, time=%u ms\r\n", cmd, move_time_ms);
+    App_Log(msg);
+
+    if (dir == 'f')
+    {
+        App_Log("forward\r\n");
+        Motor_Run(80, 80);   // 如果你现在的 Motor_Run 是方向版
+        HAL_Delay(move_time_ms);
+        Motor_Stop();
+        App_Log("stop\r\n");
+    }
+    else if (dir == 'b')
+    {
+        App_Log("backward\r\n");
+        Motor_Run(-80, -80);
+        HAL_Delay(move_time_ms);
+        Motor_Stop();
+        App_Log("stop\r\n");
+    }
+}
 
 
 /* USER CODE END 0 */
@@ -107,11 +205,11 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
-  MX_TIM1_Init();
   MX_TIM3_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-  HCSR04_Init();
   Motor_Init();
+  HCSR04_Init();
   Servo_Init();
   App_Log("boot\r\n");
 
@@ -122,9 +220,48 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
+    // Motor_RunForward(80);
+    // Motor_RunForward(20);
+    // Motor_Left(40);
+    
     static uint32_t last_measure_tick = 0U;
     static uint8_t object_present = 0;
 
+    static char bt_buf[8];
+    static uint8_t bt_idx = 0;
+
+    uint8_t rx_char;
+
+    /* 1. 非阻塞接收蓝牙数据 */
+    if (HAL_UART_Receive(&huart1, &rx_char, 1, 10) == HAL_OK)
+{
+    /* 忽略回车换行 */
+    if (rx_char == '\r' || rx_char == '\n')
+    {
+        bt_idx = 0;
+    }
+    else
+    {
+        if (bt_idx < sizeof(bt_buf) - 1)
+        {
+            bt_buf[bt_idx++] = (char)rx_char;
+
+            /* 收满5个字符就执行，例如 fs1p5 / bs2p3 */
+            if (bt_idx == 5)
+            {
+                bt_buf[bt_idx] = '\0';
+                BT_ProcessCommand(bt_buf);
+                bt_idx = 0;
+            }
+        }
+        else
+        {
+            bt_idx = 0;
+            App_Log("cmd too long\r\n");
+        }
+    }
+}
     
     if ((HAL_GetTick() - last_measure_tick) >= 200U)
     {

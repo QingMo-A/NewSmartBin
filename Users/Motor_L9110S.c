@@ -36,7 +36,7 @@ void Motor_Left(int speed)
     else if (speed < 0)
     {
         HAL_GPIO_WritePin(A_IB_GPIO_Port, A_IB_Pin, GPIO_PIN_SET);
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, pwm);
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1,100 - pwm);
     }
     else
     {
@@ -57,7 +57,7 @@ void Motor_Right(int speed)
     else if (speed < 0)
     {
         HAL_GPIO_WritePin(B_IB_GPIO_Port, B_IB_Pin, GPIO_PIN_SET);
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, pwm);
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 100 - pwm);
     }
     else
     {
