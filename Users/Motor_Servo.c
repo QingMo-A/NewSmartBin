@@ -25,7 +25,7 @@ void Servo_SetAngle(int id, int angle)
     }
 
     pulse_us = SERVO_MIN_PULSE_US + (angle * (SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US)) / 180;
-    compare = pulse_us / 2;
+    compare = pulse_us;
 
     if (id == 1)
     {

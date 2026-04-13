@@ -72,9 +72,20 @@ static void App_Log(const char *message)
 
 static void BT_ProcessCommand(const char *cmd)
 {
-    if (cmd == NULL || strlen(cmd) != 5)
+    if (cmd == NULL)
     {
-        App_Log("invalid cmd\r\n");
+        App_Log("cmd is NULL\r\n");
+        return;
+    }
+    
+    char dbg[64];
+    snprintf(dbg, sizeof(dbg), "recv cmd: %s\r\n", cmd);
+    App_Log(dbg);
+    
+    if (strlen(cmd) != 5)
+    {
+        snprintf(dbg, sizeof(dbg), "invalid cmd len=%u\r\n", (unsigned int)strlen(cmd));
+        App_Log(dbg);
         return;
     }
 
