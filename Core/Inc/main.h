@@ -57,6 +57,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define Duo_Ji_Pin GPIO_PIN_6
+#define Duo_Ji_GPIO_Port GPIOA
 #define A_IA_Pin GPIO_PIN_9
 #define A_IA_GPIO_Port GPIOE
 #define A_IB_Pin GPIO_PIN_10
@@ -65,6 +67,10 @@ void Error_Handler(void);
 #define B_IA_GPIO_Port GPIOE
 #define B_IB_Pin GPIO_PIN_12
 #define B_IB_GPIO_Port GPIOE
+#define BlueTooth_RX_Pin GPIO_PIN_14
+#define BlueTooth_RX_GPIO_Port GPIOB
+#define BlueTooth_TX_Pin GPIO_PIN_15
+#define BlueTooth_TX_GPIO_Port GPIOB
 #define Echo_Pin GPIO_PIN_1
 #define Echo_GPIO_Port GPIOD
 #define Trig_Pin GPIO_PIN_2
