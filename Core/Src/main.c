@@ -24,85 +24,36 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "HC-SR04.h"
-#include "Motor_L9110S.h"
-#include "Motor_Servo.h"
-#include <stdio.h>
-#include <string.h>
-
+#include "app.h"
+#include "comm.h"
+#include "debug_io.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MPU_Config(void);
 /* USER CODE BEGIN PFP */
-static void App_Log(const char *message);
-static void App_ProcessUledCommand(const char *cmd);
-
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static void App_Log(const char *message)
-{
-  HAL_UART_Transmit(&huart1, (uint8_t *)message, (uint16_t)strlen(message), 200U);
-}
-
-static void App_ProcessUledCommand(const char *cmd)
-{
-  const char *value;
-
-  if (cmd == NULL)
-  {
-    return;
-  }
-
-  if (strncmp(cmd, "ULED:", 5) != 0)
-  {
-    return;
-  }
-
-  value = cmd + 5;
-  while (*value == ' ')
-  {
-    ++value;
-  }
-
-  if ((*value == '1') && (value[1] == '\0'))
-  {
-    HAL_GPIO_WritePin(UserLED_GPIO_Port, UserLED_Pin, GPIO_PIN_RESET);
-    App_Log("ULED on\r\n");
-  }
-  else if ((*value == '0') && (value[1] == '\0'))
-  {
-    HAL_GPIO_WritePin(UserLED_GPIO_Port, UserLED_Pin, GPIO_PIN_SET);
-    App_Log("ULED off\r\n");
-  }
-}
-
-
 /* USER CODE END 0 */
 
 /**
@@ -111,9 +62,7 @@ static void App_ProcessUledCommand(const char *cmd)
   */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
-
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
@@ -125,14 +74,12 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -142,83 +89,17 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-  Motor_Init();
-  HCSR04_Init();
-  Servo_Init();
-  App_Log("boot\r\n");
-
-
+  Debug_Init(&huart1);
+  App_Init();
+  Comm_Init(&huart1, App_OnCommandReceived);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
-    // Motor_RunForward(80);
-    // Motor_RunForward(20);
-    // Motor_Left(40);
-    
-    static uint32_t last_measure_tick = 0U;
-    static uint8_t object_present = 0;
-    static char uart_rx_buf[16];
-    static uint8_t uart_rx_idx = 0U;
-    uint8_t rx_char;
-    
-    if (HAL_UART_Receive(&huart1, &rx_char, 1, 10U) == HAL_OK)
-    {
-      if ((rx_char == '\r') || (rx_char == '\n'))
-      {
-        if (uart_rx_idx > 0U)
-        {
-          uart_rx_buf[uart_rx_idx] = '\0';
-          App_ProcessUledCommand(uart_rx_buf);
-          uart_rx_idx = 0U;
-        }
-      }
-      else if (uart_rx_idx < (sizeof(uart_rx_buf) - 1U))
-      {
-        uart_rx_buf[uart_rx_idx++] = (char)rx_char;
-      }
-      else
-      {
-        uart_rx_idx = 0U;
-      }
-    }
-    
-    if ((HAL_GetTick() - last_measure_tick) >= 200U)
-    {
-        last_measure_tick = HAL_GetTick();
-
-        if (HCSR04_Measure())
-        {
-            float distance = HCSR04_GetDistanceCm();
-
-            if (distance > 0 && distance < 20.0f)
-            {
-                if (object_present == 0)
-                {
-                    object_present = 1;
-
-                    char msg[64];
-                    snprintf(msg, sizeof(msg), "object detected, distance = %.2f cm\r\n", distance);
-                    HAL_UART_Transmit(&huart1, (uint8_t*)msg, strlen(msg), 100);
-
-                    for (int j = 0; j < 2; j++)
-                    {
-                        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-                        HAL_Delay(200);
-                        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-                        HAL_Delay(200);
-                    }
-                }
-            }
-            else
-            {
-                object_present = 0;
-            }
-        }
-    }
+    Comm_Task();
+    App_Process();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -286,7 +167,15 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  Comm_RxByteCallback(huart);
+}
 
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  Comm_ErrorCallback(huart);
+}
 /* USER CODE END 4 */
 
  /* MPU Configuration */
@@ -348,3 +237,6 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
+
+

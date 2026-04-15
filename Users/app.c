@@ -1,0 +1,314 @@
+#include "app.h"
+
+#include "debug_io.h"
+#include "gate.h"
+#include "motion.h"
+#include "sensors.h"
+
+#define APP_MOVE_TIMEOUT_MS         10000U
+#define APP_GATE_TIMEOUT_MS         3000U
+#define APP_DROP_WAIT_MS            1500U
+#define APP_RETURN_HOME_TIMEOUT_MS  10000U
+#define APP_ERROR_BLINK_MS          200U
+
+typedef struct
+{
+  App_State_t state;
+  uint8_t active_bin;
+  uint8_t send_done_when_home;
+  uint8_t drop_close_requested;
+  uint32_t state_enter_tick;
+  uint32_t drop_wait_tick;
+  uint32_t error_blink_tick;
+} App_Context_t;
+
+static App_Context_t s_app;
+
+static const char *App_StateName(App_State_t state)
+{
+  switch (state)
+  {
+    case APP_STATE_IDLE:
+      return "IDLE";
+    case APP_STATE_MOVING_TO_BIN:
+      return "MOVING_TO_BIN";
+    case APP_STATE_OPENING_GATE:
+      return "OPENING_GATE";
+    case APP_STATE_WAITING_DROP:
+      return "WAITING_DROP";
+    case APP_STATE_RETURNING_HOME:
+      return "RETURNING_HOME";
+    case APP_STATE_ERROR:
+      return "ERROR";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+static void App_SetState(App_State_t new_state)
+{
+  App_State_t old_state = s_app.state;
+
+  s_app.state = new_state;
+  s_app.state_enter_tick = HAL_GetTick();
+
+  if (old_state != new_state)
+  {
+    DEBUG_PRINT("STATE=%s->%s", App_StateName(old_state), App_StateName(new_state));
+  }
+}
+
+static uint8_t App_StateTimedOut(uint32_t timeout_ms)
+{
+  return (uint8_t)((HAL_GetTick() - s_app.state_enter_tick) >= timeout_ms);
+}
+
+static void App_CompleteTask(void)
+{
+  s_app.active_bin = 0U;
+  s_app.drop_close_requested = 0U;
+  App_SetState(APP_STATE_IDLE);
+  Debug_UserLedSet(0U);
+  DEBUG_PRINT("TASK done_home");
+
+  if (s_app.send_done_when_home != 0U)
+  {
+    s_app.send_done_when_home = 0U;
+    (void)Comm_SendLine(COMM_TX_DONE_HOME);
+  }
+}
+
+static void App_EnterError(void)
+{
+  App_State_t prev_state = s_app.state;
+
+  s_app.active_bin = 0U;
+  s_app.send_done_when_home = 0U;
+  s_app.drop_close_requested = 0U;
+  Gate_Close();
+  Motion_ReturnHome();
+  App_SetState(APP_STATE_ERROR);
+  s_app.error_blink_tick = HAL_GetTick();
+  DEBUG_PRINT("ERROR enter from=%s", App_StateName(prev_state));
+  (void)Comm_SendLine(COMM_TX_ERR);
+}
+
+void App_Init(void)
+{
+  Motion_Init();
+  Gate_Init();
+  Sensors_Init();
+
+  s_app.active_bin = 0U;
+  s_app.send_done_when_home = 0U;
+  s_app.drop_close_requested = 0U;
+  s_app.drop_wait_tick = 0U;
+  s_app.error_blink_tick = 0U;
+  App_SetState(APP_STATE_IDLE);
+  Gate_Close();
+  Debug_UserLedSet(0U);
+  DEBUG_PRINT("APP init");
+}
+
+HAL_StatusTypeDef App_StartTask(uint8_t bin_id)
+{
+  if ((bin_id < 1U) || (bin_id > 4U))
+  {
+    return HAL_ERROR;
+  }
+
+  if (s_app.state != APP_STATE_IDLE)
+  {
+    return HAL_BUSY;
+  }
+
+  s_app.active_bin = bin_id;
+  s_app.send_done_when_home = 1U;
+  s_app.drop_close_requested = 0U;
+  DEBUG_PRINT("TASK start bin=%u", bin_id);
+  Motion_MoveToBin(bin_id);
+  App_SetState(APP_STATE_MOVING_TO_BIN);
+  Debug_UserLedSet(1U);
+  return HAL_OK;
+}
+
+void App_RequestReset(void)
+{
+  DEBUG_PRINT("RESET request");
+  s_app.active_bin = 0U;
+  s_app.send_done_when_home = 0U;
+  s_app.drop_close_requested = 1U;
+  Gate_Close();
+
+  if ((Sensors_IsHomeConfirmed() != 0U) || (Motion_IsAtHome() != 0U))
+  {
+    App_SetState(APP_STATE_IDLE);
+    Debug_UserLedSet(0U);
+  }
+  else
+  {
+    Motion_ReturnHome();
+    DEBUG_PRINT("MOVE return_home_cmd");
+    App_SetState(APP_STATE_RETURNING_HOME);
+    Debug_UserLedSet(1U);
+  }
+}
+
+void App_OnCommandReceived(const Comm_Command_t *cmd)
+{
+  if (cmd == NULL)
+  {
+    DEBUG_PRINT("CMD null");
+    (void)Comm_SendLine(COMM_TX_ERR);
+    return;
+  }
+
+  switch (cmd->type)
+  {
+    case COMM_CMD_PING:
+      DEBUG_PRINT("CMD ping");
+      (void)Comm_SendLine(COMM_TX_ACK);
+      break;
+
+    case COMM_CMD_RESET:
+      DEBUG_PRINT("CMD reset");
+      (void)Comm_SendLine(COMM_TX_ACK);
+      App_RequestReset();
+      break;
+
+    case COMM_CMD_TARGET_BIN:
+      if (s_app.state == APP_STATE_IDLE)
+      {
+        DEBUG_PRINT("CMD target_bin=%u", cmd->bin_id);
+        (void)Comm_SendLine(COMM_TX_ACK);
+        if (App_StartTask(cmd->bin_id) != HAL_OK)
+        {
+          App_EnterError();
+        }
+      }
+      else if (s_app.state == APP_STATE_ERROR)
+      {
+        DEBUG_PRINT("CMD target_rejected error_state");
+        (void)Comm_SendLine(COMM_TX_ERR);
+      }
+      else
+      {
+        DEBUG_PRINT("CMD target_busy state=%s", App_StateName(s_app.state));
+        (void)Comm_SendLine(COMM_TX_BUSY);
+      }
+      break;
+
+    case COMM_CMD_INVALID:
+    case COMM_CMD_NONE:
+    default:
+      DEBUG_PRINT("CMD invalid");
+      (void)Comm_SendLine(COMM_TX_ERR);
+      break;
+  }
+}
+
+void App_Process(void)
+{
+  Sensors_Update();
+  Motion_Update();
+  Gate_Update();
+
+  switch (s_app.state)
+  {
+    case APP_STATE_IDLE:
+      Debug_UserLedSet(0U);
+      break;
+
+    case APP_STATE_MOVING_TO_BIN:
+      if ((Sensors_IsBinConfirmed(s_app.active_bin) != 0U) || (Motion_IsAtTarget() != 0U))
+      {
+        DEBUG_PRINT("MOVE reached bin=%u", s_app.active_bin);
+        Gate_Open();
+        DEBUG_PRINT("GATE open_cmd");
+        App_SetState(APP_STATE_OPENING_GATE);
+      }
+      else if (App_StateTimedOut(APP_MOVE_TIMEOUT_MS) != 0U)
+      {
+        DEBUG_PRINT("TIMEOUT move_to_bin");
+        App_EnterError();
+      }
+      break;
+
+    case APP_STATE_OPENING_GATE:
+      if (Gate_IsOpenDone() != 0U)
+      {
+        DEBUG_PRINT("GATE opened");
+        s_app.drop_close_requested = 0U;
+        s_app.drop_wait_tick = HAL_GetTick();
+        App_SetState(APP_STATE_WAITING_DROP);
+      }
+      else if (App_StateTimedOut(APP_GATE_TIMEOUT_MS) != 0U)
+      {
+        DEBUG_PRINT("TIMEOUT gate_open");
+        App_EnterError();
+      }
+      break;
+
+    case APP_STATE_WAITING_DROP:
+      if (s_app.drop_close_requested == 0U)
+      {
+        if ((HAL_GetTick() - s_app.drop_wait_tick) >= APP_DROP_WAIT_MS)
+        {
+          DEBUG_PRINT("DROP wait_done");
+          Gate_Close();
+          DEBUG_PRINT("GATE close_cmd");
+          s_app.drop_close_requested = 1U;
+          s_app.state_enter_tick = HAL_GetTick();
+        }
+      }
+      else if (Gate_IsCloseDone() != 0U)
+      {
+        DEBUG_PRINT("GATE closed");
+        Motion_ReturnHome();
+        DEBUG_PRINT("MOVE return_home_cmd");
+        App_SetState(APP_STATE_RETURNING_HOME);
+      }
+      else if (App_StateTimedOut(APP_GATE_TIMEOUT_MS) != 0U)
+      {
+        DEBUG_PRINT("TIMEOUT gate_close");
+        App_EnterError();
+      }
+      break;
+
+    case APP_STATE_RETURNING_HOME:
+      if ((Sensors_IsHomeConfirmed() != 0U) || (Motion_IsAtHome() != 0U))
+      {
+        DEBUG_PRINT("HOME reached");
+        App_CompleteTask();
+      }
+      else if (App_StateTimedOut(APP_RETURN_HOME_TIMEOUT_MS) != 0U)
+      {
+        DEBUG_PRINT("TIMEOUT return_home");
+        App_EnterError();
+      }
+      break;
+
+    case APP_STATE_ERROR:
+      if ((HAL_GetTick() - s_app.error_blink_tick) >= APP_ERROR_BLINK_MS)
+      {
+        s_app.error_blink_tick = HAL_GetTick();
+        Debug_UserLedToggle();
+      }
+      break;
+
+    default:
+      DEBUG_PRINT("ERROR invalid_state");
+      App_EnterError();
+      break;
+  }
+}
+
+App_State_t App_GetState(void)
+{
+  return s_app.state;
+}
+
+uint8_t App_IsBusy(void)
+{
+  return (uint8_t)(s_app.state != APP_STATE_IDLE);
+}
