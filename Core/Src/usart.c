@@ -26,8 +26,10 @@
 UART_HandleTypeDef huart1;
 
 /* USART1 init function */
+
 void MX_USART1_UART_Init(void)
 {
+
   /* USER CODE BEGIN USART1_Init 0 */
   /* USER CODE END USART1_Init 0 */
 
@@ -62,10 +64,12 @@ void MX_USART1_UART_Init(void)
   }
   /* USER CODE BEGIN USART1_Init 2 */
   /* USER CODE END USART1_Init 2 */
+
 }
 
 void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
 {
+
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
   if(uartHandle->Instance==USART1)
@@ -106,6 +110,7 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
 
 void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 {
+
   if(uartHandle->Instance==USART1)
   {
   /* USER CODE BEGIN USART1_MspDeInit 0 */
@@ -127,3 +132,4 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* uartHandle)
 
 /* USER CODE BEGIN 1 */
 /* USER CODE END 1 */
+

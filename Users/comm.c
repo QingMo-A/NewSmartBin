@@ -54,6 +54,137 @@ static void Comm_QueueLine(const char *line)
   ++s_queue_count;
 }
 
+static uint8_t Comm_ParseDirection(const char *token, Comm_Direction_t *direction)
+{
+  if ((token == NULL) || (direction == NULL))
+  {
+    return 0U;
+  }
+
+  if (strcmp(token, "LEFT") == 0)
+  {
+    *direction = COMM_DIR_LEFT;
+    return 1U;
+  }
+
+  if (strcmp(token, "RIGHT") == 0)
+  {
+    *direction = COMM_DIR_RIGHT;
+    return 1U;
+  }
+
+  return 0U;
+}
+
+static uint8_t Comm_ParseColor(const char *token, Comm_Color_t *color)
+{
+  if ((token == NULL) || (color == NULL))
+  {
+    return 0U;
+  }
+
+  if (strcmp(token, "RED") == 0)
+  {
+    *color = COMM_COLOR_RED;
+    return 1U;
+  }
+  if (strcmp(token, "GREEN") == 0)
+  {
+    *color = COMM_COLOR_GREEN;
+    return 1U;
+  }
+  if (strcmp(token, "BLUE") == 0)
+  {
+    *color = COMM_COLOR_BLUE;
+    return 1U;
+  }
+  if (strcmp(token, "YELLOW") == 0)
+  {
+    *color = COMM_COLOR_YELLOW;
+    return 1U;
+  }
+
+  return 0U;
+}
+
+static uint8_t Comm_ParseTargetLine(const char *line, Comm_Command_t *cmd)
+{
+  const char *cursor;
+  const char *dir_start;
+  const char *color_start;
+  const char *end_ptr;
+  char dir_buf[8];
+  char color_buf[12];
+  size_t dir_len;
+  size_t color_len;
+
+  if ((line == NULL) || (cmd == NULL))
+  {
+    return 0U;
+  }
+
+  if (strncmp(line, "[$TARGET_BIN:", 13) != 0)
+  {
+    return 0U;
+  }
+
+  cursor = line + 13;
+  if ((*cursor < '1') || (*cursor > '4'))
+  {
+    return 0U;
+  }
+
+  cmd->bin_id = (uint8_t)(*cursor - '0');
+  cursor++;
+
+  if (strncmp(cursor, ",DIR:", 5) != 0)
+  {
+    return 0U;
+  }
+  cursor += 5;
+  dir_start = cursor;
+  color_start = strstr(cursor, ",COLOR:");
+  if (color_start == NULL)
+  {
+    return 0U;
+  }
+
+  dir_len = (size_t)(color_start - dir_start);
+  if ((dir_len == 0U) || (dir_len >= sizeof(dir_buf)))
+  {
+    return 0U;
+  }
+  (void)memcpy(dir_buf, dir_start, dir_len);
+  dir_buf[dir_len] = '\0';
+
+  color_start += 7;
+  end_ptr = strchr(color_start, ']');
+  if ((end_ptr == NULL) || (*(end_ptr + 1) != '\0'))
+  {
+    return 0U;
+  }
+
+  color_len = (size_t)(end_ptr - color_start);
+  if ((color_len == 0U) || (color_len >= sizeof(color_buf)))
+  {
+    return 0U;
+  }
+  (void)memcpy(color_buf, color_start, color_len);
+  color_buf[color_len] = '\0';
+
+  if (Comm_ParseDirection(dir_buf, &cmd->direction) == 0U)
+  {
+    return 0U;
+  }
+  if (Comm_ParseColor(color_buf, &cmd->color) == 0U)
+  {
+    return 0U;
+  }
+
+  cmd->type = COMM_CMD_TARGET_BIN;
+  return 1U;
+}
+
 void Comm_Init(UART_HandleTypeDef *huart, Comm_CommandHandler_t handler)
 {
   s_comm_uart = huart;
@@ -118,7 +249,7 @@ HAL_StatusTypeDef Comm_SendLine(const char *line)
     return HAL_ERROR;
   }
 
-  return HAL_UART_Transmit(s_comm_uart, (uint8_t *)tx_buf, (uint16_t)len, 50U);
+  return HAL_UART_Transmit(s_comm_uart, (uint8_t *)tx_buf, (uint16_t)len, 100U);
 }
 
 void Comm_ProcessLine(const char *line)
@@ -141,6 +272,8 @@ void Comm_ProcessLine(const char *line)
 
   cmd.type = COMM_CMD_INVALID;
   cmd.bin_id = 0U;
+  cmd.direction = COMM_DIR_UNKNOWN;
+  cmd.color = COMM_COLOR_UNKNOWN;
   cmd.raw_line = line;
 
   if (strcmp(line, "[$PING]") == 0)
@@ -151,13 +284,9 @@ void Comm_ProcessLine(const char *line)
   {
     cmd.type = COMM_CMD_RESET;
   }
-  else if ((strncmp(line, "[$TARGET_BIN:", 13) == 0) &&
-           (len == 15U) &&
-           (line[13] >= '1') && (line[13] <= '4') &&
-           (line[14] == ']'))
+  else if (Comm_ParseTargetLine(line, &cmd) != 0U)
   {
-    cmd.type = COMM_CMD_TARGET_BIN;
-    cmd.bin_id = (uint8_t)(line[13] - '0');
+    cmd.raw_line = line;
   }
 
   if (cmd.type == COMM_CMD_INVALID)

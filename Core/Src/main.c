@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "i2c.h"
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
@@ -27,6 +28,7 @@
 #include "app.h"
 #include "comm.h"
 #include "debug_io.h"
+#include "Motor_L9110S.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,6 +64,7 @@ static void MPU_Config(void);
   */
 int main(void)
 {
+
   /* USER CODE BEGIN 1 */
   /* USER CODE END 1 */
 
@@ -88,6 +91,8 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM3_Init();
   MX_TIM1_Init();
+  MX_I2C1_Init();
+  Motor_Init();
   /* USER CODE BEGIN 2 */
   Debug_Init(&huart1);
   App_Init();
@@ -100,6 +105,7 @@ int main(void)
   {
     Comm_Task();
     App_Process();
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -237,6 +243,4 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
-
 

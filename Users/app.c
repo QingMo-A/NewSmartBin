@@ -5,16 +5,18 @@
 #include "motion.h"
 #include "sensors.h"
 
-#define APP_MOVE_TIMEOUT_MS         10000U
+#define APP_MOVE_TIMEOUT_MS         20000U
 #define APP_GATE_TIMEOUT_MS         3000U
 #define APP_DROP_WAIT_MS            1500U
-#define APP_RETURN_HOME_TIMEOUT_MS  10000U
+#define APP_RETURN_HOME_TIMEOUT_MS  20000U
 #define APP_ERROR_BLINK_MS          200U
 
 typedef struct
 {
   App_State_t state;
   uint8_t active_bin;
+  Comm_Direction_t active_direction;
+  Comm_Color_t active_color;
   uint8_t send_done_when_home;
   uint8_t drop_close_requested;
   uint32_t state_enter_tick;
@@ -45,6 +47,36 @@ static const char *App_StateName(App_State_t state)
   }
 }
 
+static const char *App_DirectionName(Comm_Direction_t direction)
+{
+  switch (direction)
+  {
+    case COMM_DIR_LEFT:
+      return "LEFT";
+    case COMM_DIR_RIGHT:
+      return "RIGHT";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+static const char *App_ColorName(Comm_Color_t color)
+{
+  switch (color)
+  {
+    case COMM_COLOR_RED:
+      return "RED";
+    case COMM_COLOR_GREEN:
+      return "GREEN";
+    case COMM_COLOR_BLUE:
+      return "BLUE";
+    case COMM_COLOR_YELLOW:
+      return "YELLOW";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 static void App_SetState(App_State_t new_state)
 {
   App_State_t old_state = s_app.state;
@@ -65,8 +97,12 @@ static uint8_t App_StateTimedOut(uint32_t timeout_ms)
 
 static void App_CompleteTask(void)
 {
+  Motion_Stop();
   s_app.active_bin = 0U;
+  s_app.active_direction = COMM_DIR_UNKNOWN;
+  s_app.active_color = COMM_COLOR_UNKNOWN;
   s_app.drop_close_requested = 0U;
+  Sensors_ClearTarget();
   App_SetState(APP_STATE_IDLE);
   Debug_UserLedSet(0U);
   DEBUG_PRINT("TASK done_home");
@@ -82,11 +118,14 @@ static void App_EnterError(void)
 {
   App_State_t prev_state = s_app.state;
 
+  Motion_Stop();
   s_app.active_bin = 0U;
+  s_app.active_direction = COMM_DIR_UNKNOWN;
+  s_app.active_color = COMM_COLOR_UNKNOWN;
   s_app.send_done_when_home = 0U;
   s_app.drop_close_requested = 0U;
+  Sensors_ClearTarget();
   Gate_Close();
-  Motion_ReturnHome();
   App_SetState(APP_STATE_ERROR);
   s_app.error_blink_tick = HAL_GetTick();
   DEBUG_PRINT("ERROR enter from=%s", App_StateName(prev_state));
@@ -100,19 +139,27 @@ void App_Init(void)
   Sensors_Init();
 
   s_app.active_bin = 0U;
+  s_app.active_direction = COMM_DIR_UNKNOWN;
+  s_app.active_color = COMM_COLOR_UNKNOWN;
   s_app.send_done_when_home = 0U;
   s_app.drop_close_requested = 0U;
   s_app.drop_wait_tick = 0U;
   s_app.error_blink_tick = 0U;
   App_SetState(APP_STATE_IDLE);
   Gate_Close();
+  Sensors_ClearTarget();
   Debug_UserLedSet(0U);
   DEBUG_PRINT("APP init");
 }
 
-HAL_StatusTypeDef App_StartTask(uint8_t bin_id)
+HAL_StatusTypeDef App_StartTask(uint8_t bin_id, Comm_Direction_t direction, Comm_Color_t color)
 {
   if ((bin_id < 1U) || (bin_id > 4U))
+  {
+    return HAL_ERROR;
+  }
+
+  if ((direction == COMM_DIR_UNKNOWN) || (color == COMM_COLOR_UNKNOWN))
   {
     return HAL_ERROR;
   }
@@ -123,10 +170,13 @@ HAL_StatusTypeDef App_StartTask(uint8_t bin_id)
   }
 
   s_app.active_bin = bin_id;
+  s_app.active_direction = direction;
+  s_app.active_color = color;
   s_app.send_done_when_home = 1U;
   s_app.drop_close_requested = 0U;
-  DEBUG_PRINT("TASK start bin=%u", bin_id);
-  Motion_MoveToBin(bin_id);
+  Sensors_SetTarget(bin_id, color);
+  DEBUG_PRINT("TASK start bin=%u dir=%s color=%s", bin_id, App_DirectionName(direction), App_ColorName(color));
+  Motion_MoveToBin(bin_id, direction);
   App_SetState(APP_STATE_MOVING_TO_BIN);
   Debug_UserLedSet(1U);
   return HAL_OK;
@@ -136,12 +186,16 @@ void App_RequestReset(void)
 {
   DEBUG_PRINT("RESET request");
   s_app.active_bin = 0U;
+  s_app.active_direction = COMM_DIR_UNKNOWN;
+  s_app.active_color = COMM_COLOR_UNKNOWN;
   s_app.send_done_when_home = 0U;
   s_app.drop_close_requested = 1U;
+  Sensors_ClearTarget();
   Gate_Close();
 
   if ((Sensors_IsHomeConfirmed() != 0U) || (Motion_IsAtHome() != 0U))
   {
+    Motion_Stop();
     App_SetState(APP_STATE_IDLE);
     Debug_UserLedSet(0U);
   }
@@ -179,9 +233,9 @@ void App_OnCommandReceived(const Comm_Command_t *cmd)
     case COMM_CMD_TARGET_BIN:
       if (s_app.state == APP_STATE_IDLE)
       {
-        DEBUG_PRINT("CMD target_bin=%u", cmd->bin_id);
+        DEBUG_PRINT("CMD target bin=%u dir=%s color=%s", cmd->bin_id, App_DirectionName(cmd->direction), App_ColorName(cmd->color));
         (void)Comm_SendLine(COMM_TX_ACK);
-        if (App_StartTask(cmd->bin_id) != HAL_OK)
+        if (App_StartTask(cmd->bin_id, cmd->direction, cmd->color) != HAL_OK)
         {
           App_EnterError();
         }
@@ -220,8 +274,9 @@ void App_Process(void)
       break;
 
     case APP_STATE_MOVING_TO_BIN:
-      if ((Sensors_IsBinConfirmed(s_app.active_bin) != 0U) || (Motion_IsAtTarget() != 0U))
+      if (Sensors_IsBinConfirmed(s_app.active_bin) != 0U)
       {
+        Motion_Stop();
         DEBUG_PRINT("MOVE reached bin=%u", s_app.active_bin);
         Gate_Open();
         DEBUG_PRINT("GATE open_cmd");
@@ -278,6 +333,7 @@ void App_Process(void)
     case APP_STATE_RETURNING_HOME:
       if ((Sensors_IsHomeConfirmed() != 0U) || (Motion_IsAtHome() != 0U))
       {
+        Motion_Stop();
         DEBUG_PRINT("HOME reached");
         App_CompleteTask();
       }
@@ -312,3 +368,4 @@ uint8_t App_IsBusy(void)
 {
   return (uint8_t)(s_app.state != APP_STATE_IDLE);
 }
+

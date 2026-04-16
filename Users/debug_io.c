@@ -51,7 +51,7 @@ void Debug_Trace(const char *fmt, ...)
     return;
   }
 
-  (void)HAL_UART_Transmit(s_debug_uart, (uint8_t *)tx_buf, (uint16_t)tx_len, 50U);
+  (void)HAL_UART_Transmit(s_debug_uart, (uint8_t *)tx_buf, (uint16_t)tx_len, 300U);
 }
 
 void Debug_UserLedSet(uint8_t on)
@@ -65,3 +65,4 @@ void Debug_UserLedToggle(void)
 {
   HAL_GPIO_TogglePin(UserLED_GPIO_Port, UserLED_Pin);
 }
+

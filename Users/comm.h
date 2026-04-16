@@ -16,10 +16,28 @@ typedef enum
   COMM_CMD_INVALID
 } Comm_CommandType_t;
 
+typedef enum
+{
+  COMM_DIR_UNKNOWN = 0,
+  COMM_DIR_LEFT,
+  COMM_DIR_RIGHT
+} Comm_Direction_t;
+
+typedef enum
+{
+  COMM_COLOR_UNKNOWN = 0,
+  COMM_COLOR_RED,
+  COMM_COLOR_GREEN,
+  COMM_COLOR_BLUE,
+  COMM_COLOR_YELLOW
+} Comm_Color_t;
+
 typedef struct
 {
   Comm_CommandType_t type;
   uint8_t bin_id;
+  Comm_Direction_t direction;
+  Comm_Color_t color;
   const char *raw_line;
 } Comm_Command_t;
 
