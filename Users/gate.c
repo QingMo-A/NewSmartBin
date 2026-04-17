@@ -1,6 +1,11 @@
 #include "gate.h"
 
-#define GATE_PLACEHOLDER_MOVE_MS 500U
+#include "Motor_Servo.h"
+
+#define GATE_OPEN_ANGLE           0U
+#define GATE_CLOSE_ANGLE          90U
+#define GATE_OPEN_SETTLE_MS       500U
+#define GATE_CLOSE_SETTLE_MS      500U
 
 typedef enum
 {
@@ -18,43 +23,55 @@ static struct
 
 void Gate_Init(void)
 {
+  Servo_Init();
+
   s_gate.state = GATE_STATE_IDLE;
   s_gate.is_open = 0U;
-  s_gate.action_start_tick = 0U;
+  s_gate.action_start_tick = HAL_GetTick();
 }
 
 void Gate_Update(void)
 {
-  if (s_gate.state == GATE_STATE_IDLE)
-  {
-    return;
-  }
+  uint32_t elapsed = HAL_GetTick() - s_gate.action_start_tick;
 
-  if ((HAL_GetTick() - s_gate.action_start_tick) < GATE_PLACEHOLDER_MOVE_MS)
+  switch (s_gate.state)
   {
-    return;
-  }
+    case GATE_STATE_IDLE:
+      return;
 
-  if (s_gate.state == GATE_STATE_OPENING)
-  {
-    s_gate.is_open = 1U;
-  }
-  else if (s_gate.state == GATE_STATE_CLOSING)
-  {
-    s_gate.is_open = 0U;
-  }
+    case GATE_STATE_OPENING:
+      if (elapsed >= GATE_OPEN_SETTLE_MS)
+      {
+        s_gate.is_open = 1U;
+        s_gate.state = GATE_STATE_IDLE;
+      }
+      return;
 
-  s_gate.state = GATE_STATE_IDLE;
+    case GATE_STATE_CLOSING:
+      if (elapsed >= GATE_CLOSE_SETTLE_MS)
+      {
+        s_gate.is_open = 0U;
+        s_gate.state = GATE_STATE_IDLE;
+      }
+      return;
+
+    default:
+      s_gate.state = GATE_STATE_IDLE;
+      s_gate.is_open = 0U;
+      return;
+  }
 }
 
 void Gate_Open(void)
 {
+  Servo_SetAngle(SERVO_ID_DOOR, GATE_OPEN_ANGLE);
   s_gate.state = GATE_STATE_OPENING;
   s_gate.action_start_tick = HAL_GetTick();
 }
 
 void Gate_Close(void)
 {
+  Servo_SetAngle(SERVO_ID_DOOR, GATE_CLOSE_ANGLE);
   s_gate.state = GATE_STATE_CLOSING;
   s_gate.action_start_tick = HAL_GetTick();
 }

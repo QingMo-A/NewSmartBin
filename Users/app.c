@@ -8,8 +8,10 @@
 #include <string.h>
 
 #define APP_MOVE_TIMEOUT_MS         20000U
+#define APP_PREOPEN_DELAY_MS        1000U
 #define APP_GATE_TIMEOUT_MS         3000U
 #define APP_DROP_WAIT_MS            1500U
+#define APP_POSTCLOSE_DELAY_MS      1000U
 #define APP_RETURN_HOME_TIMEOUT_MS  20000U
 #define APP_ERROR_BLINK_MS          200U
 
@@ -36,10 +38,14 @@ static const char *App_StateName(App_State_t state)
       return "IDLE";
     case APP_STATE_MOVING_TO_BIN:
       return "MOVING_TO_BIN";
+    case APP_STATE_PREOPEN_WAIT:
+      return "PREOPEN_WAIT";
     case APP_STATE_OPENING_GATE:
       return "OPENING_GATE";
     case APP_STATE_WAITING_DROP:
       return "WAITING_DROP";
+    case APP_STATE_POSTCLOSE_WAIT:
+      return "POSTCLOSE_WAIT";
     case APP_STATE_RETURNING_HOME:
       return "RETURNING_HOME";
     case APP_STATE_ERROR:
@@ -279,14 +285,22 @@ void App_Process(void)
       {
         Motion_Stop();
         DEBUG_PRINT("MOVE reached bin=%u", s_app.active_bin);
-        Gate_Open();
-        DEBUG_PRINT("GATE open_cmd");
-        App_SetState(APP_STATE_OPENING_GATE);
+        App_SetState(APP_STATE_PREOPEN_WAIT);
       }
       else if (App_StateTimedOut(APP_MOVE_TIMEOUT_MS) != 0U)
       {
         DEBUG_PRINT("TIMEOUT move_to_bin");
         App_EnterError();
+      }
+      break;
+
+    case APP_STATE_PREOPEN_WAIT:
+      if (App_StateTimedOut(APP_PREOPEN_DELAY_MS) != 0U)
+      {
+        DEBUG_PRINT("GATE preopen_wait_done");
+        Gate_Open();
+        DEBUG_PRINT("GATE open_cmd");
+        App_SetState(APP_STATE_OPENING_GATE);
       }
       break;
 
@@ -320,14 +334,22 @@ void App_Process(void)
       else if (Gate_IsCloseDone() != 0U)
       {
         DEBUG_PRINT("GATE closed");
-        Motion_ReturnHome();
-        DEBUG_PRINT("MOVE return_home_cmd");
-        App_SetState(APP_STATE_RETURNING_HOME);
+        App_SetState(APP_STATE_POSTCLOSE_WAIT);
       }
       else if (App_StateTimedOut(APP_GATE_TIMEOUT_MS) != 0U)
       {
         DEBUG_PRINT("TIMEOUT gate_close");
         App_EnterError();
+      }
+      break;
+
+    case APP_STATE_POSTCLOSE_WAIT:
+      if (App_StateTimedOut(APP_POSTCLOSE_DELAY_MS) != 0U)
+      {
+        DEBUG_PRINT("MOVE postclose_wait_done");
+        Motion_ReturnHome();
+        DEBUG_PRINT("MOVE return_home_cmd");
+        App_SetState(APP_STATE_RETURNING_HOME);
       }
       break;
 
