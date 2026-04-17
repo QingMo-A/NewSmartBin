@@ -3,21 +3,13 @@
 #include "TCS34725.h"
 #include "debug_io.h"
 
-typedef struct
-{
-  uint8_t r;
-  uint8_t g;
-  uint8_t b;
-  uint8_t tol_r;
-  uint8_t tol_g;
-  uint8_t tol_b;
-} Sensors_ColorWindow_t;
+#include <string.h>
 
 typedef struct
 {
   uint8_t tcs_ready;
   uint8_t target_bin;
-  Comm_Color_t target_color;
+  Comm_ColorSpec_t target_color_spec;
   uint8_t bin_confirmed;
   uint8_t home_confirmed;
   uint8_t last_r;
@@ -28,40 +20,6 @@ typedef struct
 } Sensors_Context_t;
 
 static Sensors_Context_t s_sensors;
-
-static const Sensors_ColorWindow_t kColorRed = {220U, 70U, 70U, 70U, 60U, 60U};
-static const Sensors_ColorWindow_t kColorGreen = {80U, 210U, 80U, 60U, 70U, 60U};
-static const Sensors_ColorWindow_t kColorBlue = {70U, 120U, 225U, 60U, 70U, 70U};
-static const Sensors_ColorWindow_t kColorYellow = {225U, 200U, 70U, 70U, 70U, 70U};
-
-static const char *Sensors_ColorName(Comm_Color_t color)
-{
-  switch (color)
-  {
-    case COMM_COLOR_RED: return "RED";
-    case COMM_COLOR_GREEN: return "GREEN";
-    case COMM_COLOR_BLUE: return "BLUE";
-    case COMM_COLOR_YELLOW: return "YELLOW";
-    default: return "NONE";
-  }
-}
-
-static const Sensors_ColorWindow_t *Sensors_GetColorWindow(Comm_Color_t color)
-{
-  switch (color)
-  {
-    case COMM_COLOR_RED:
-      return &kColorRed;
-    case COMM_COLOR_GREEN:
-      return &kColorGreen;
-    case COMM_COLOR_BLUE:
-      return &kColorBlue;
-    case COMM_COLOR_YELLOW:
-      return &kColorYellow;
-    default:
-      return NULL;
-  }
-}
 
 static uint8_t Sensors_ChannelDiff(uint8_t a, uint8_t b)
 {
@@ -111,23 +69,23 @@ static uint8_t Sensors_IsChannelMatch(uint8_t value, uint8_t target, uint8_t tol
   return (uint8_t)(((uint16_t)value >= lower) && ((uint16_t)value <= upper));
 }
 
-static uint8_t Sensors_IsColorMatch(uint8_t r, uint8_t g, uint8_t b, const Sensors_ColorWindow_t *window)
+static uint8_t Sensors_IsColorMatch(uint8_t r, uint8_t g, uint8_t b, const Comm_ColorSpec_t *spec)
 {
-  if (window == NULL)
+  if (spec == NULL)
   {
     return 0U;
   }
 
-  return (uint8_t)(Sensors_IsChannelMatch(r, window->r, window->tol_r) != 0U &&
-                   Sensors_IsChannelMatch(g, window->g, window->tol_g) != 0U &&
-                   Sensors_IsChannelMatch(b, window->b, window->tol_b) != 0U);
+  return (uint8_t)(Sensors_IsChannelMatch(r, spec->r, spec->tol_r) != 0U &&
+                   Sensors_IsChannelMatch(g, spec->g, spec->tol_g) != 0U &&
+                   Sensors_IsChannelMatch(b, spec->b, spec->tol_b) != 0U);
 }
 
 void Sensors_Init(void)
 {
   s_sensors.tcs_ready = (uint8_t)((TCS34725_Init() == 0U) ? 1U : 0U);
   s_sensors.target_bin = 0U;
-  s_sensors.target_color = COMM_COLOR_UNKNOWN;
+  memset(&s_sensors.target_color_spec, 0, sizeof(s_sensors.target_color_spec));
   s_sensors.bin_confirmed = 0U;
   s_sensors.home_confirmed = 0U;
   s_sensors.last_r = 0U;
@@ -143,7 +101,6 @@ void Sensors_Update(void)
 {
   RGB raw_rgb;
   uint32_t rgb888;
-  const Sensors_ColorWindow_t *target_window;
 
   if (s_sensors.tcs_ready == 0U)
   {
@@ -165,12 +122,14 @@ void Sensors_Update(void)
   s_sensors.last_g = (uint8_t)(rgb888 >> 8);
   s_sensors.last_b = (uint8_t)rgb888;
 
-  target_window = Sensors_GetColorWindow(s_sensors.target_color);
   s_sensors.home_confirmed = Sensors_IsWhiteHomeMatch(raw_rgb, s_sensors.last_r, s_sensors.last_g, s_sensors.last_b);
 
-  if ((s_sensors.target_bin != 0U) && (target_window != NULL))
+  if (s_sensors.target_bin != 0U)
   {
-    s_sensors.bin_confirmed = Sensors_IsColorMatch(s_sensors.last_r, s_sensors.last_g, s_sensors.last_b, target_window);
+    s_sensors.bin_confirmed = Sensors_IsColorMatch(s_sensors.last_r,
+                                                   s_sensors.last_g,
+                                                   s_sensors.last_b,
+                                                   &s_sensors.target_color_spec);
   }
   else
   {
@@ -180,21 +139,41 @@ void Sensors_Update(void)
   if ((HAL_GetTick() - s_sensors.last_debug_tick) >= 250U)
   {
     s_sensors.last_debug_tick = HAL_GetTick();
-    DEBUG_PRINT("SENS C=%u RGB=%u,%u,%u tgt=%u/%s bin=%u home=%u", raw_rgb.C, s_sensors.last_r, s_sensors.last_g, s_sensors.last_b, s_sensors.target_bin, Sensors_ColorName(s_sensors.target_color), s_sensors.bin_confirmed, s_sensors.home_confirmed);
+    DEBUG_PRINT("SENS C=%u RGB=%u,%u,%u tgt=%u rgb=%u,%u,%u tol=%u,%u,%u bin=%u home=%u",
+                raw_rgb.C,
+                s_sensors.last_r,
+                s_sensors.last_g,
+                s_sensors.last_b,
+                s_sensors.target_bin,
+                s_sensors.target_color_spec.r,
+                s_sensors.target_color_spec.g,
+                s_sensors.target_color_spec.b,
+                s_sensors.target_color_spec.tol_r,
+                s_sensors.target_color_spec.tol_g,
+                s_sensors.target_color_spec.tol_b,
+                s_sensors.bin_confirmed,
+                s_sensors.home_confirmed);
   }
 }
 
-void Sensors_SetTarget(uint8_t bin_id, Comm_Color_t color)
+void Sensors_SetTarget(uint8_t bin_id, const Comm_ColorSpec_t *color_spec)
 {
   s_sensors.target_bin = bin_id;
-  s_sensors.target_color = color;
+  if (color_spec != NULL)
+  {
+    s_sensors.target_color_spec = *color_spec;
+  }
+  else
+  {
+    memset(&s_sensors.target_color_spec, 0, sizeof(s_sensors.target_color_spec));
+  }
   s_sensors.bin_confirmed = 0U;
 }
 
 void Sensors_ClearTarget(void)
 {
   s_sensors.target_bin = 0U;
-  s_sensors.target_color = COMM_COLOR_UNKNOWN;
+  memset(&s_sensors.target_color_spec, 0, sizeof(s_sensors.target_color_spec));
   s_sensors.bin_confirmed = 0U;
 }
 
@@ -212,5 +191,3 @@ uint8_t Sensors_IsHomeConfirmed(void)
 {
   return s_sensors.home_confirmed;
 }
-
-

@@ -23,21 +23,22 @@ typedef enum
   COMM_DIR_RIGHT
 } Comm_Direction_t;
 
-typedef enum
+typedef struct
 {
-  COMM_COLOR_UNKNOWN = 0,
-  COMM_COLOR_RED,
-  COMM_COLOR_GREEN,
-  COMM_COLOR_BLUE,
-  COMM_COLOR_YELLOW
-} Comm_Color_t;
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+  uint8_t tol_r;
+  uint8_t tol_g;
+  uint8_t tol_b;
+} Comm_ColorSpec_t;
 
 typedef struct
 {
   Comm_CommandType_t type;
   uint8_t bin_id;
   Comm_Direction_t direction;
-  Comm_Color_t color;
+  Comm_ColorSpec_t color_spec;
   const char *raw_line;
 } Comm_Command_t;
 

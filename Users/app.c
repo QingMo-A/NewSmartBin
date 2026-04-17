@@ -5,6 +5,8 @@
 #include "motion.h"
 #include "sensors.h"
 
+#include <string.h>
+
 #define APP_MOVE_TIMEOUT_MS         20000U
 #define APP_GATE_TIMEOUT_MS         3000U
 #define APP_DROP_WAIT_MS            1500U
@@ -16,7 +18,7 @@ typedef struct
   App_State_t state;
   uint8_t active_bin;
   Comm_Direction_t active_direction;
-  Comm_Color_t active_color;
+  Comm_ColorSpec_t active_color_spec;
   uint8_t send_done_when_home;
   uint8_t drop_close_requested;
   uint32_t state_enter_tick;
@@ -60,23 +62,6 @@ static const char *App_DirectionName(Comm_Direction_t direction)
   }
 }
 
-static const char *App_ColorName(Comm_Color_t color)
-{
-  switch (color)
-  {
-    case COMM_COLOR_RED:
-      return "RED";
-    case COMM_COLOR_GREEN:
-      return "GREEN";
-    case COMM_COLOR_BLUE:
-      return "BLUE";
-    case COMM_COLOR_YELLOW:
-      return "YELLOW";
-    default:
-      return "UNKNOWN";
-  }
-}
-
 static void App_SetState(App_State_t new_state)
 {
   App_State_t old_state = s_app.state;
@@ -100,7 +85,7 @@ static void App_CompleteTask(void)
   Motion_Stop();
   s_app.active_bin = 0U;
   s_app.active_direction = COMM_DIR_UNKNOWN;
-  s_app.active_color = COMM_COLOR_UNKNOWN;
+  memset(&s_app.active_color_spec, 0, sizeof(s_app.active_color_spec));
   s_app.drop_close_requested = 0U;
   Sensors_ClearTarget();
   App_SetState(APP_STATE_IDLE);
@@ -121,7 +106,7 @@ static void App_EnterError(void)
   Motion_Stop();
   s_app.active_bin = 0U;
   s_app.active_direction = COMM_DIR_UNKNOWN;
-  s_app.active_color = COMM_COLOR_UNKNOWN;
+  memset(&s_app.active_color_spec, 0, sizeof(s_app.active_color_spec));
   s_app.send_done_when_home = 0U;
   s_app.drop_close_requested = 0U;
   Sensors_ClearTarget();
@@ -140,7 +125,7 @@ void App_Init(void)
 
   s_app.active_bin = 0U;
   s_app.active_direction = COMM_DIR_UNKNOWN;
-  s_app.active_color = COMM_COLOR_UNKNOWN;
+  memset(&s_app.active_color_spec, 0, sizeof(s_app.active_color_spec));
   s_app.send_done_when_home = 0U;
   s_app.drop_close_requested = 0U;
   s_app.drop_wait_tick = 0U;
@@ -152,14 +137,14 @@ void App_Init(void)
   DEBUG_PRINT("APP init");
 }
 
-HAL_StatusTypeDef App_StartTask(uint8_t bin_id, Comm_Direction_t direction, Comm_Color_t color)
+HAL_StatusTypeDef App_StartTask(uint8_t bin_id, Comm_Direction_t direction, const Comm_ColorSpec_t *color_spec)
 {
-  if ((bin_id < 1U) || (bin_id > 4U))
+  if ((bin_id < 1U) || (bin_id > 4U) || (color_spec == NULL))
   {
     return HAL_ERROR;
   }
 
-  if ((direction == COMM_DIR_UNKNOWN) || (color == COMM_COLOR_UNKNOWN))
+  if (direction == COMM_DIR_UNKNOWN)
   {
     return HAL_ERROR;
   }
@@ -171,11 +156,19 @@ HAL_StatusTypeDef App_StartTask(uint8_t bin_id, Comm_Direction_t direction, Comm
 
   s_app.active_bin = bin_id;
   s_app.active_direction = direction;
-  s_app.active_color = color;
+  s_app.active_color_spec = *color_spec;
   s_app.send_done_when_home = 1U;
   s_app.drop_close_requested = 0U;
-  Sensors_SetTarget(bin_id, color);
-  DEBUG_PRINT("TASK start bin=%u dir=%s color=%s", bin_id, App_DirectionName(direction), App_ColorName(color));
+  Sensors_SetTarget(bin_id, color_spec);
+  DEBUG_PRINT("TASK start bin=%u dir=%s rgb=%u,%u,%u tol=%u,%u,%u",
+              bin_id,
+              App_DirectionName(direction),
+              color_spec->r,
+              color_spec->g,
+              color_spec->b,
+              color_spec->tol_r,
+              color_spec->tol_g,
+              color_spec->tol_b);
   Motion_MoveToBin(bin_id, direction);
   App_SetState(APP_STATE_MOVING_TO_BIN);
   Debug_UserLedSet(1U);
@@ -187,7 +180,7 @@ void App_RequestReset(void)
   DEBUG_PRINT("RESET request");
   s_app.active_bin = 0U;
   s_app.active_direction = COMM_DIR_UNKNOWN;
-  s_app.active_color = COMM_COLOR_UNKNOWN;
+  memset(&s_app.active_color_spec, 0, sizeof(s_app.active_color_spec));
   s_app.send_done_when_home = 0U;
   s_app.drop_close_requested = 1U;
   Sensors_ClearTarget();
@@ -233,9 +226,17 @@ void App_OnCommandReceived(const Comm_Command_t *cmd)
     case COMM_CMD_TARGET_BIN:
       if (s_app.state == APP_STATE_IDLE)
       {
-        DEBUG_PRINT("CMD target bin=%u dir=%s color=%s", cmd->bin_id, App_DirectionName(cmd->direction), App_ColorName(cmd->color));
+        DEBUG_PRINT("CMD target bin=%u dir=%s rgb=%u,%u,%u tol=%u,%u,%u",
+                    cmd->bin_id,
+                    App_DirectionName(cmd->direction),
+                    cmd->color_spec.r,
+                    cmd->color_spec.g,
+                    cmd->color_spec.b,
+                    cmd->color_spec.tol_r,
+                    cmd->color_spec.tol_g,
+                    cmd->color_spec.tol_b);
         (void)Comm_SendLine(COMM_TX_ACK);
-        if (App_StartTask(cmd->bin_id, cmd->direction, cmd->color) != HAL_OK)
+        if (App_StartTask(cmd->bin_id, cmd->direction, &cmd->color_spec) != HAL_OK)
         {
           App_EnterError();
         }
@@ -368,4 +369,3 @@ uint8_t App_IsBusy(void)
 {
   return (uint8_t)(s_app.state != APP_STATE_IDLE);
 }
-

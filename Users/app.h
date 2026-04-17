@@ -20,7 +20,7 @@ typedef enum
 
 void App_Init(void);
 void App_Process(void);
-HAL_StatusTypeDef App_StartTask(uint8_t bin_id, Comm_Direction_t direction, Comm_Color_t color);
+HAL_StatusTypeDef App_StartTask(uint8_t bin_id, Comm_Direction_t direction, const Comm_ColorSpec_t *color_spec);
 void App_OnCommandReceived(const Comm_Command_t *cmd);
 void App_RequestReset(void);
 App_State_t App_GetState(void);

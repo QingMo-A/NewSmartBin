@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define COMM_RX_LINE_MAX_LEN 64U
+#define COMM_RX_LINE_MAX_LEN 80U
 #define COMM_RX_QUEUE_DEPTH  4U
 
 static UART_HandleTypeDef *s_comm_uart = NULL;
@@ -76,112 +76,77 @@ static uint8_t Comm_ParseDirection(const char *token, Comm_Direction_t *directio
   return 0U;
 }
 
-static uint8_t Comm_ParseColor(const char *token, Comm_Color_t *color)
+static uint8_t Comm_IsByteValueValid(unsigned int value)
 {
-  if ((token == NULL) || (color == NULL))
-  {
-    return 0U;
-  }
-
-  if (strcmp(token, "RED") == 0)
-  {
-    *color = COMM_COLOR_RED;
-    return 1U;
-  }
-  if (strcmp(token, "GREEN") == 0)
-  {
-    *color = COMM_COLOR_GREEN;
-    return 1U;
-  }
-  if (strcmp(token, "BLUE") == 0)
-  {
-    *color = COMM_COLOR_BLUE;
-    return 1U;
-  }
-  if (strcmp(token, "YELLOW") == 0)
-  {
-    *color = COMM_COLOR_YELLOW;
-    return 1U;
-  }
-
-  return 0U;
+  return (uint8_t)(value <= 255U);
 }
 
 static uint8_t Comm_ParseTargetLine(const char *line, Comm_Command_t *cmd)
 {
-  const char *cursor;
-  const char *dir_start;
-  const char *color_start;
-  const char *end_ptr;
+  unsigned int bin_id;
+  unsigned int r;
+  unsigned int g;
+  unsigned int b;
+  unsigned int tol_r;
+  unsigned int tol_g;
+  unsigned int tol_b;
   char dir_buf[8];
-  char color_buf[12];
-  size_t dir_len;
-  size_t color_len;
+  int parsed_len;
 
   if ((line == NULL) || (cmd == NULL))
   {
     return 0U;
   }
 
-  if (strncmp(line, "[$TARGET_BIN:", 13) != 0)
+  parsed_len = 0;
+  if (sscanf(line,
+             "[$TARGET_BIN:%u,DIR:%7[^,],RGB:%u,%u,%u,TOL:%u,%u,%u]%n",
+             &bin_id,
+             dir_buf,
+             &r,
+             &g,
+             &b,
+             &tol_r,
+             &tol_g,
+             &tol_b,
+             &parsed_len) != 8)
   {
     return 0U;
   }
 
-  cursor = line + 13;
-  if ((*cursor < '1') || (*cursor > '4'))
+  if ((parsed_len <= 0) || (line[parsed_len] != '\0'))
   {
     return 0U;
   }
 
-  cmd->bin_id = (uint8_t)(*cursor - '0');
-  cursor++;
-
-  if (strncmp(cursor, ",DIR:", 5) != 0)
-  {
-    return 0U;
-  }
-  cursor += 5;
-  dir_start = cursor;
-  color_start = strstr(cursor, ",COLOR:");
-  if (color_start == NULL)
+  if ((bin_id < 1U) || (bin_id > 4U))
   {
     return 0U;
   }
 
-  dir_len = (size_t)(color_start - dir_start);
-  if ((dir_len == 0U) || (dir_len >= sizeof(dir_buf)))
+  if ((Comm_IsByteValueValid(r) == 0U) ||
+      (Comm_IsByteValueValid(g) == 0U) ||
+      (Comm_IsByteValueValid(b) == 0U) ||
+      (Comm_IsByteValueValid(tol_r) == 0U) ||
+      (Comm_IsByteValueValid(tol_g) == 0U) ||
+      (Comm_IsByteValueValid(tol_b) == 0U))
   {
     return 0U;
   }
-  (void)memcpy(dir_buf, dir_start, dir_len);
-  dir_buf[dir_len] = '\0';
-
-  color_start += 7;
-  end_ptr = strchr(color_start, ']');
-  if ((end_ptr == NULL) || (*(end_ptr + 1) != '\0'))
-  {
-    return 0U;
-  }
-
-  color_len = (size_t)(end_ptr - color_start);
-  if ((color_len == 0U) || (color_len >= sizeof(color_buf)))
-  {
-    return 0U;
-  }
-  (void)memcpy(color_buf, color_start, color_len);
-  color_buf[color_len] = '\0';
 
   if (Comm_ParseDirection(dir_buf, &cmd->direction) == 0U)
   {
     return 0U;
   }
-  if (Comm_ParseColor(color_buf, &cmd->color) == 0U)
-  {
-    return 0U;
-  }
 
   cmd->type = COMM_CMD_TARGET_BIN;
+  cmd->bin_id = (uint8_t)bin_id;
+  cmd->color_spec.r = (uint8_t)r;
+  cmd->color_spec.g = (uint8_t)g;
+  cmd->color_spec.b = (uint8_t)b;
+  cmd->color_spec.tol_r = (uint8_t)tol_r;
+  cmd->color_spec.tol_g = (uint8_t)tol_g;
+  cmd->color_spec.tol_b = (uint8_t)tol_b;
   return 1U;
 }
 
@@ -235,7 +200,7 @@ UART_HandleTypeDef *Comm_GetUartHandle(void)
 
 HAL_StatusTypeDef Comm_SendLine(const char *line)
 {
-  char tx_buf[96];
+  char tx_buf[112];
   int len;
 
   if ((s_comm_uart == NULL) || (line == NULL))
@@ -273,7 +238,7 @@ void Comm_ProcessLine(const char *line)
   cmd.type = COMM_CMD_INVALID;
   cmd.bin_id = 0U;
   cmd.direction = COMM_DIR_UNKNOWN;
-  cmd.color = COMM_COLOR_UNKNOWN;
+  memset(&cmd.color_spec, 0, sizeof(cmd.color_spec));
   cmd.raw_line = line;
 
   if (strcmp(line, "[$PING]") == 0)
