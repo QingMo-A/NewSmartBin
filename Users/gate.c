@@ -64,14 +64,14 @@ void Gate_Update(void)
 
 void Gate_Open(void)
 {
-  Servo_SetAngle(SERVO_ID_DOOR, GATE_OPEN_ANGLE);
+  Servo_SetDoorsSameAngle(GATE_OPEN_ANGLE);
   s_gate.state = GATE_STATE_OPENING;
   s_gate.action_start_tick = HAL_GetTick();
 }
 
 void Gate_Close(void)
 {
-  Servo_SetAngle(SERVO_ID_DOOR, GATE_CLOSE_ANGLE);
+  Servo_SetDoorsSameAngle(GATE_CLOSE_ANGLE);
   s_gate.state = GATE_STATE_CLOSING;
   s_gate.action_start_tick = HAL_GetTick();
 }
