@@ -5,6 +5,28 @@
 
 #include <string.h>
 
+#define SENSORS_UPDATE_PERIOD_MS       80U
+#define SENSORS_DEBUG_PERIOD_MS        250U
+
+#define SENSORS_BIN_ENTER_COUNT        3U
+#define SENSORS_BIN_EXIT_COUNT         2U
+#define SENSORS_HOME_ENTER_COUNT       4U
+#define SENSORS_HOME_EXIT_COUNT        3U
+
+#define SENSORS_HOME_CLEAR_MIN         1200U
+#define SENSORS_HOME_R_MIN             160U
+#define SENSORS_HOME_G_MIN             180U
+#define SENSORS_HOME_B_MIN             180U
+#define SENSORS_HOME_RGB_SPREAD_MAX    90U
+#define SENSORS_RATIO_MIN_TOL          8U
+
+typedef struct
+{
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+} Sensors_RatioRgb_t;
+
 typedef struct
 {
   uint8_t tcs_ready;
@@ -12,9 +34,14 @@ typedef struct
   Comm_ColorSpec_t target_color_spec;
   uint8_t bin_confirmed;
   uint8_t home_confirmed;
+  uint8_t bin_enter_count;
+  uint8_t bin_exit_count;
+  uint8_t home_enter_count;
+  uint8_t home_exit_count;
   uint8_t last_r;
   uint8_t last_g;
   uint8_t last_b;
+  Sensors_RatioRgb_t last_ratio;
   uint32_t last_update_tick;
   uint32_t last_debug_tick;
 } Sensors_Context_t;
@@ -26,27 +53,166 @@ static uint8_t Sensors_ChannelDiff(uint8_t a, uint8_t b)
   return (uint8_t)((a >= b) ? (a - b) : (b - a));
 }
 
+static uint8_t Sensors_ChannelMax(uint8_t a, uint8_t b, uint8_t c)
+{
+  uint8_t max_value = a;
+
+  if (b > max_value)
+  {
+    max_value = b;
+  }
+  if (c > max_value)
+  {
+    max_value = c;
+  }
+
+  return max_value;
+}
+
+static uint8_t Sensors_ChannelMin(uint8_t a, uint8_t b, uint8_t c)
+{
+  uint8_t min_value = a;
+
+  if (b < min_value)
+  {
+    min_value = b;
+  }
+  if (c < min_value)
+  {
+    min_value = c;
+  }
+
+  return min_value;
+}
+
+static Sensors_RatioRgb_t Sensors_MakeRatioRgb(uint16_t r, uint16_t g, uint16_t b)
+{
+  Sensors_RatioRgb_t ratio = {0U, 0U, 0U};
+  uint32_t sum = (uint32_t)r + (uint32_t)g + (uint32_t)b;
+
+  if (sum == 0U)
+  {
+    return ratio;
+  }
+
+  ratio.r = (uint8_t)(((uint32_t)r * 255U) / sum);
+  ratio.g = (uint8_t)(((uint32_t)g * 255U) / sum);
+  ratio.b = (uint8_t)(((uint32_t)b * 255U) / sum);
+  return ratio;
+}
+
+static uint8_t Sensors_DominantMask(uint8_t r, uint8_t g, uint8_t b)
+{
+  uint8_t max_value = Sensors_ChannelMax(r, g, b);
+  uint8_t mask = 0U;
+
+  if (Sensors_ChannelDiff(r, max_value) <= 25U)
+  {
+    mask |= 0x01U;
+  }
+  if (Sensors_ChannelDiff(g, max_value) <= 25U)
+  {
+    mask |= 0x02U;
+  }
+  if (Sensors_ChannelDiff(b, max_value) <= 25U)
+  {
+    mask |= 0x04U;
+  }
+
+  return mask;
+}
+
+static uint8_t Sensors_ScaleToleranceToRatio(uint8_t tolerance, uint16_t target_sum)
+{
+  uint16_t scaled;
+
+  if (target_sum == 0U)
+  {
+    return 0U;
+  }
+
+  scaled = (uint16_t)(((uint32_t)tolerance * 255U) / target_sum);
+  if (scaled < SENSORS_RATIO_MIN_TOL)
+  {
+    scaled = SENSORS_RATIO_MIN_TOL;
+  }
+  if (scaled > 255U)
+  {
+    scaled = 255U;
+  }
+
+  return (uint8_t)scaled;
+}
+
+static uint8_t Sensors_IsRatioChannelMatch(uint8_t value, uint8_t target, uint8_t tolerance)
+{
+  return (uint8_t)(Sensors_ChannelDiff(value, target) <= tolerance);
+}
+
+static uint8_t Sensors_IsTargetColorMatch(RGB raw_rgb, const Comm_ColorSpec_t *spec, Sensors_RatioRgb_t *current_ratio_out)
+{
+  uint16_t target_sum;
+  Sensors_RatioRgb_t current_ratio;
+  Sensors_RatioRgb_t target_ratio;
+  uint8_t tol_r;
+  uint8_t tol_g;
+  uint8_t tol_b;
+  uint8_t target_mask;
+  uint8_t current_mask;
+
+  if (spec == NULL)
+  {
+    return 0U;
+  }
+
+  target_sum = (uint16_t)spec->r + (uint16_t)spec->g + (uint16_t)spec->b;
+  if (target_sum == 0U)
+  {
+    return 0U;
+  }
+
+  current_ratio = Sensors_MakeRatioRgb(raw_rgb.R, raw_rgb.G, raw_rgb.B);
+  target_ratio = Sensors_MakeRatioRgb(spec->r, spec->g, spec->b);
+
+  if (current_ratio_out != NULL)
+  {
+    *current_ratio_out = current_ratio;
+  }
+
+  target_mask = Sensors_DominantMask(spec->r, spec->g, spec->b);
+  current_mask = Sensors_DominantMask(current_ratio.r, current_ratio.g, current_ratio.b);
+  if ((target_mask & current_mask) == 0U)
+  {
+    return 0U;
+  }
+
+  tol_r = Sensors_ScaleToleranceToRatio(spec->tol_r, target_sum);
+  tol_g = Sensors_ScaleToleranceToRatio(spec->tol_g, target_sum);
+  tol_b = Sensors_ScaleToleranceToRatio(spec->tol_b, target_sum);
+
+  return (uint8_t)(Sensors_IsRatioChannelMatch(current_ratio.r, target_ratio.r, tol_r) != 0U &&
+                   Sensors_IsRatioChannelMatch(current_ratio.g, target_ratio.g, tol_g) != 0U &&
+                   Sensors_IsRatioChannelMatch(current_ratio.b, target_ratio.b, tol_b) != 0U);
+}
+
 static uint8_t Sensors_IsWhiteHomeMatch(RGB raw_rgb, uint8_t r, uint8_t g, uint8_t b)
 {
-  if (raw_rgb.C < 1200U)
+  uint8_t max_value;
+  uint8_t min_value;
+
+  if (raw_rgb.C < SENSORS_HOME_CLEAR_MIN)
   {
     return 0U;
   }
 
-  if ((r < 170U) || (g < 170U) || (b < 170U))
+  if ((r < SENSORS_HOME_R_MIN) || (g < SENSORS_HOME_G_MIN) || (b < SENSORS_HOME_B_MIN))
   {
     return 0U;
   }
 
-  if (Sensors_ChannelDiff(r, g) > 35U)
-  {
-    return 0U;
-  }
-  if (Sensors_ChannelDiff(r, b) > 35U)
-  {
-    return 0U;
-  }
-  if (Sensors_ChannelDiff(g, b) > 35U)
+  max_value = Sensors_ChannelMax(r, g, b);
+  min_value = Sensors_ChannelMin(r, g, b);
+  if ((uint8_t)(max_value - min_value) > SENSORS_HOME_RGB_SPREAD_MAX)
   {
     return 0U;
   }
@@ -54,31 +220,52 @@ static uint8_t Sensors_IsWhiteHomeMatch(RGB raw_rgb, uint8_t r, uint8_t g, uint8
   return 1U;
 }
 
-static uint8_t Sensors_IsChannelMatch(uint8_t value, uint8_t target, uint8_t tolerance)
+static uint8_t Sensors_UpdateDebouncedFlag(uint8_t instant_match,
+                                           uint8_t *confirmed,
+                                           uint8_t *enter_count,
+                                           uint8_t *exit_count,
+                                           uint8_t enter_threshold,
+                                           uint8_t exit_threshold)
 {
-  uint16_t lower;
-  uint16_t upper;
-
-  lower = (target > tolerance) ? (uint16_t)(target - tolerance) : 0U;
-  upper = (uint16_t)target + tolerance;
-  if (upper > 255U)
-  {
-    upper = 255U;
-  }
-
-  return (uint8_t)(((uint16_t)value >= lower) && ((uint16_t)value <= upper));
-}
-
-static uint8_t Sensors_IsColorMatch(uint8_t r, uint8_t g, uint8_t b, const Comm_ColorSpec_t *spec)
-{
-  if (spec == NULL)
+  if ((confirmed == NULL) || (enter_count == NULL) || (exit_count == NULL))
   {
     return 0U;
   }
 
-  return (uint8_t)(Sensors_IsChannelMatch(r, spec->r, spec->tol_r) != 0U &&
-                   Sensors_IsChannelMatch(g, spec->g, spec->tol_g) != 0U &&
-                   Sensors_IsChannelMatch(b, spec->b, spec->tol_b) != 0U);
+  if (instant_match != 0U)
+  {
+    if (*enter_count < enter_threshold)
+    {
+      ++(*enter_count);
+    }
+    *exit_count = 0U;
+
+    if (*enter_count >= enter_threshold)
+    {
+      *confirmed = 1U;
+    }
+  }
+  else
+  {
+    *enter_count = 0U;
+    if (*confirmed != 0U)
+    {
+      if (*exit_count < exit_threshold)
+      {
+        ++(*exit_count);
+      }
+      if (*exit_count >= exit_threshold)
+      {
+        *confirmed = 0U;
+      }
+    }
+    else
+    {
+      *exit_count = 0U;
+    }
+  }
+
+  return *confirmed;
 }
 
 void Sensors_Init(void)
@@ -88,9 +275,14 @@ void Sensors_Init(void)
   memset(&s_sensors.target_color_spec, 0, sizeof(s_sensors.target_color_spec));
   s_sensors.bin_confirmed = 0U;
   s_sensors.home_confirmed = 0U;
+  s_sensors.bin_enter_count = 0U;
+  s_sensors.bin_exit_count = 0U;
+  s_sensors.home_enter_count = 0U;
+  s_sensors.home_exit_count = 0U;
   s_sensors.last_r = 0U;
   s_sensors.last_g = 0U;
   s_sensors.last_b = 0U;
+  memset(&s_sensors.last_ratio, 0, sizeof(s_sensors.last_ratio));
   s_sensors.last_update_tick = 0U;
   s_sensors.last_debug_tick = 0U;
 
@@ -101,6 +293,8 @@ void Sensors_Update(void)
 {
   RGB raw_rgb;
   uint32_t rgb888;
+  uint8_t instant_home_match;
+  uint8_t instant_bin_match = 0U;
 
   if (s_sensors.tcs_ready == 0U)
   {
@@ -109,7 +303,7 @@ void Sensors_Update(void)
     return;
   }
 
-  if ((HAL_GetTick() - s_sensors.last_update_tick) < 80U)
+  if ((HAL_GetTick() - s_sensors.last_update_tick) < SENSORS_UPDATE_PERIOD_MS)
   {
     return;
   }
@@ -122,28 +316,43 @@ void Sensors_Update(void)
   s_sensors.last_g = (uint8_t)(rgb888 >> 8);
   s_sensors.last_b = (uint8_t)rgb888;
 
-  s_sensors.home_confirmed = Sensors_IsWhiteHomeMatch(raw_rgb, s_sensors.last_r, s_sensors.last_g, s_sensors.last_b);
+  instant_home_match = Sensors_IsWhiteHomeMatch(raw_rgb, s_sensors.last_r, s_sensors.last_g, s_sensors.last_b);
+  (void)Sensors_UpdateDebouncedFlag(instant_home_match,
+                                    &s_sensors.home_confirmed,
+                                    &s_sensors.home_enter_count,
+                                    &s_sensors.home_exit_count,
+                                    SENSORS_HOME_ENTER_COUNT,
+                                    SENSORS_HOME_EXIT_COUNT);
 
   if (s_sensors.target_bin != 0U)
   {
-    s_sensors.bin_confirmed = Sensors_IsColorMatch(s_sensors.last_r,
-                                                   s_sensors.last_g,
-                                                   s_sensors.last_b,
-                                                   &s_sensors.target_color_spec);
+    instant_bin_match = Sensors_IsTargetColorMatch(raw_rgb,
+                                                   &s_sensors.target_color_spec,
+                                                   &s_sensors.last_ratio);
   }
   else
   {
-    s_sensors.bin_confirmed = 0U;
+    memset(&s_sensors.last_ratio, 0, sizeof(s_sensors.last_ratio));
   }
 
-  if ((HAL_GetTick() - s_sensors.last_debug_tick) >= 250U)
+  (void)Sensors_UpdateDebouncedFlag(instant_bin_match,
+                                    &s_sensors.bin_confirmed,
+                                    &s_sensors.bin_enter_count,
+                                    &s_sensors.bin_exit_count,
+                                    SENSORS_BIN_ENTER_COUNT,
+                                    SENSORS_BIN_EXIT_COUNT);
+
+  if ((HAL_GetTick() - s_sensors.last_debug_tick) >= SENSORS_DEBUG_PERIOD_MS)
   {
     s_sensors.last_debug_tick = HAL_GetTick();
-    DEBUG_PRINT("SENS C=%u RGB=%u,%u,%u tgt=%u rgb=%u,%u,%u tol=%u,%u,%u bin=%u home=%u",
+    DEBUG_PRINT("SENS C=%u RGB=%u,%u,%u ratio=%u,%u,%u tgt=%u rgb=%u,%u,%u tol=%u,%u,%u bin=%u home=%u",
                 raw_rgb.C,
                 s_sensors.last_r,
                 s_sensors.last_g,
                 s_sensors.last_b,
+                s_sensors.last_ratio.r,
+                s_sensors.last_ratio.g,
+                s_sensors.last_ratio.b,
                 s_sensors.target_bin,
                 s_sensors.target_color_spec.r,
                 s_sensors.target_color_spec.g,
@@ -168,6 +377,8 @@ void Sensors_SetTarget(uint8_t bin_id, const Comm_ColorSpec_t *color_spec)
     memset(&s_sensors.target_color_spec, 0, sizeof(s_sensors.target_color_spec));
   }
   s_sensors.bin_confirmed = 0U;
+  s_sensors.bin_enter_count = 0U;
+  s_sensors.bin_exit_count = 0U;
 }
 
 void Sensors_ClearTarget(void)
@@ -175,6 +386,8 @@ void Sensors_ClearTarget(void)
   s_sensors.target_bin = 0U;
   memset(&s_sensors.target_color_spec, 0, sizeof(s_sensors.target_color_spec));
   s_sensors.bin_confirmed = 0U;
+  s_sensors.bin_enter_count = 0U;
+  s_sensors.bin_exit_count = 0U;
 }
 
 uint8_t Sensors_IsBinConfirmed(uint8_t bin_id)

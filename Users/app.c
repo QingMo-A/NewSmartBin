@@ -192,7 +192,7 @@ void App_RequestReset(void)
   Sensors_ClearTarget();
   Gate_Close();
 
-  if ((Sensors_IsHomeConfirmed() != 0U) || (Motion_IsAtHome() != 0U))
+  if (Sensors_IsHomeConfirmed() != 0U)
   {
     Motion_Stop();
     App_SetState(APP_STATE_IDLE);
@@ -354,7 +354,7 @@ void App_Process(void)
       break;
 
     case APP_STATE_RETURNING_HOME:
-      if ((Sensors_IsHomeConfirmed() != 0U) || (Motion_IsAtHome() != 0U))
+      if (Sensors_IsHomeConfirmed() != 0U)
       {
         Motion_Stop();
         DEBUG_PRINT("HOME reached");
@@ -391,3 +391,4 @@ uint8_t App_IsBusy(void)
 {
   return (uint8_t)(s_app.state != APP_STATE_IDLE);
 }
+

@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define COMM_RX_LINE_MAX_LEN 80U
+#define COMM_RX_LINE_MAX_LEN 128U
 #define COMM_RX_QUEUE_DEPTH  4U
 
 static UART_HandleTypeDef *s_comm_uart = NULL;
@@ -328,3 +328,4 @@ void Comm_ErrorCallback(UART_HandleTypeDef *huart)
   __HAL_UART_CLEAR_PEFLAG(huart);
   Comm_StartReceiveIT();
 }
+
