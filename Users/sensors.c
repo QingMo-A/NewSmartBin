@@ -13,12 +13,13 @@
 #define SENSORS_HOME_ENTER_COUNT       4U
 #define SENSORS_HOME_EXIT_COUNT        3U
 
-#define SENSORS_HOME_CLEAR_MIN         1200U
-#define SENSORS_HOME_R_MIN             160U
-#define SENSORS_HOME_G_MIN             180U
-#define SENSORS_HOME_B_MIN             180U
-#define SENSORS_HOME_RGB_SPREAD_MAX    90U
 #define SENSORS_RATIO_MIN_TOL          8U
+#define SENSORS_HOME_DEFAULT_R         85U
+#define SENSORS_HOME_DEFAULT_G         85U
+#define SENSORS_HOME_DEFAULT_B         85U
+#define SENSORS_HOME_DEFAULT_TOL_R     20U
+#define SENSORS_HOME_DEFAULT_TOL_G     20U
+#define SENSORS_HOME_DEFAULT_TOL_B     20U
 
 typedef struct
 {
@@ -32,8 +33,10 @@ typedef struct
   uint8_t tcs_ready;
   uint8_t target_bin;
   Comm_ColorSpec_t target_color_spec;
+  Comm_ColorSpec_t home_color_spec;
   uint8_t bin_confirmed;
   uint8_t home_confirmed;
+  uint8_t color_debug_enabled;
   uint8_t bin_enter_count;
   uint8_t bin_exit_count;
   uint8_t home_enter_count;
@@ -195,31 +198,6 @@ static uint8_t Sensors_IsTargetColorMatch(RGB raw_rgb, const Comm_ColorSpec_t *s
                    Sensors_IsRatioChannelMatch(current_ratio.b, target_ratio.b, tol_b) != 0U);
 }
 
-static uint8_t Sensors_IsWhiteHomeMatch(RGB raw_rgb, uint8_t r, uint8_t g, uint8_t b)
-{
-  uint8_t max_value;
-  uint8_t min_value;
-
-  if (raw_rgb.C < SENSORS_HOME_CLEAR_MIN)
-  {
-    return 0U;
-  }
-
-  if ((r < SENSORS_HOME_R_MIN) || (g < SENSORS_HOME_G_MIN) || (b < SENSORS_HOME_B_MIN))
-  {
-    return 0U;
-  }
-
-  max_value = Sensors_ChannelMax(r, g, b);
-  min_value = Sensors_ChannelMin(r, g, b);
-  if ((uint8_t)(max_value - min_value) > SENSORS_HOME_RGB_SPREAD_MAX)
-  {
-    return 0U;
-  }
-
-  return 1U;
-}
-
 static uint8_t Sensors_UpdateDebouncedFlag(uint8_t instant_match,
                                            uint8_t *confirmed,
                                            uint8_t *enter_count,
@@ -273,8 +251,15 @@ void Sensors_Init(void)
   s_sensors.tcs_ready = (uint8_t)((TCS34725_Init() == 0U) ? 1U : 0U);
   s_sensors.target_bin = 0U;
   memset(&s_sensors.target_color_spec, 0, sizeof(s_sensors.target_color_spec));
+  s_sensors.home_color_spec.r = SENSORS_HOME_DEFAULT_R;
+  s_sensors.home_color_spec.g = SENSORS_HOME_DEFAULT_G;
+  s_sensors.home_color_spec.b = SENSORS_HOME_DEFAULT_B;
+  s_sensors.home_color_spec.tol_r = SENSORS_HOME_DEFAULT_TOL_R;
+  s_sensors.home_color_spec.tol_g = SENSORS_HOME_DEFAULT_TOL_G;
+  s_sensors.home_color_spec.tol_b = SENSORS_HOME_DEFAULT_TOL_B;
   s_sensors.bin_confirmed = 0U;
   s_sensors.home_confirmed = 0U;
+  s_sensors.color_debug_enabled = 0U;
   s_sensors.bin_enter_count = 0U;
   s_sensors.bin_exit_count = 0U;
   s_sensors.home_enter_count = 0U;
@@ -316,7 +301,7 @@ void Sensors_Update(void)
   s_sensors.last_g = (uint8_t)(rgb888 >> 8);
   s_sensors.last_b = (uint8_t)rgb888;
 
-  instant_home_match = Sensors_IsWhiteHomeMatch(raw_rgb, s_sensors.last_r, s_sensors.last_g, s_sensors.last_b);
+  instant_home_match = Sensors_IsTargetColorMatch(raw_rgb, &s_sensors.home_color_spec, NULL);
   (void)Sensors_UpdateDebouncedFlag(instant_home_match,
                                     &s_sensors.home_confirmed,
                                     &s_sensors.home_enter_count,
@@ -342,7 +327,7 @@ void Sensors_Update(void)
                                     SENSORS_BIN_ENTER_COUNT,
                                     SENSORS_BIN_EXIT_COUNT);
 
-  if ((HAL_GetTick() - s_sensors.last_debug_tick) >= SENSORS_DEBUG_PERIOD_MS)
+  if ((s_sensors.color_debug_enabled != 0U) && ((HAL_GetTick() - s_sensors.last_debug_tick) >= SENSORS_DEBUG_PERIOD_MS))
   {
     s_sensors.last_debug_tick = HAL_GetTick();
     DEBUG_PRINT("SENS C=%u RGB=%u,%u,%u ratio=%u,%u,%u tgt=%u rgb=%u,%u,%u tol=%u,%u,%u bin=%u home=%u",
@@ -381,6 +366,26 @@ void Sensors_SetTarget(uint8_t bin_id, const Comm_ColorSpec_t *color_spec)
   s_sensors.bin_exit_count = 0U;
 }
 
+void Sensors_SetHomeColor(const Comm_ColorSpec_t *color_spec)
+{
+  if (color_spec != NULL)
+  {
+    s_sensors.home_color_spec = *color_spec;
+  }
+  else
+  {
+    s_sensors.home_color_spec.r = SENSORS_HOME_DEFAULT_R;
+    s_sensors.home_color_spec.g = SENSORS_HOME_DEFAULT_G;
+    s_sensors.home_color_spec.b = SENSORS_HOME_DEFAULT_B;
+    s_sensors.home_color_spec.tol_r = SENSORS_HOME_DEFAULT_TOL_R;
+    s_sensors.home_color_spec.tol_g = SENSORS_HOME_DEFAULT_TOL_G;
+    s_sensors.home_color_spec.tol_b = SENSORS_HOME_DEFAULT_TOL_B;
+  }
+  s_sensors.home_confirmed = 0U;
+  s_sensors.home_enter_count = 0U;
+  s_sensors.home_exit_count = 0U;
+}
+
 void Sensors_ClearTarget(void)
 {
   s_sensors.target_bin = 0U;
@@ -403,4 +408,15 @@ uint8_t Sensors_IsBinConfirmed(uint8_t bin_id)
 uint8_t Sensors_IsHomeConfirmed(void)
 {
   return s_sensors.home_confirmed;
+}
+
+void Sensors_SetColorDebugEnabled(uint8_t enabled)
+{
+  s_sensors.color_debug_enabled = (uint8_t)((enabled != 0U) ? 1U : 0U);
+  s_sensors.last_debug_tick = 0U;
+}
+
+uint8_t Sensors_IsColorDebugEnabled(void)
+{
+  return s_sensors.color_debug_enabled;
 }

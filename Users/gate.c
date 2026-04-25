@@ -1,11 +1,7 @@
 #include "gate.h"
 
+#include "app_config.h"
 #include "Motor_Servo.h"
-
-#define GATE_OPEN_ANGLE           0U
-#define GATE_CLOSE_ANGLE          90U
-#define GATE_OPEN_SETTLE_MS       500U
-#define GATE_CLOSE_SETTLE_MS      500U
 
 typedef enum
 {
@@ -32,6 +28,7 @@ void Gate_Init(void)
 
 void Gate_Update(void)
 {
+  const App_Config_t *config = AppConfig_Get();
   uint32_t elapsed = HAL_GetTick() - s_gate.action_start_tick;
 
   switch (s_gate.state)
@@ -40,7 +37,7 @@ void Gate_Update(void)
       return;
 
     case GATE_STATE_OPENING:
-      if (elapsed >= GATE_OPEN_SETTLE_MS)
+      if (elapsed >= config->gate_open_settle_ms)
       {
         s_gate.is_open = 1U;
         s_gate.state = GATE_STATE_IDLE;
@@ -48,7 +45,7 @@ void Gate_Update(void)
       return;
 
     case GATE_STATE_CLOSING:
-      if (elapsed >= GATE_CLOSE_SETTLE_MS)
+      if (elapsed >= config->gate_close_settle_ms)
       {
         s_gate.is_open = 0U;
         s_gate.state = GATE_STATE_IDLE;
@@ -64,14 +61,14 @@ void Gate_Update(void)
 
 void Gate_Open(void)
 {
-  Servo_SetDoorsSameAngle(GATE_OPEN_ANGLE);
+  Servo_SetDoorsSameAngle(AppConfig_Get()->gate_open_angle);
   s_gate.state = GATE_STATE_OPENING;
   s_gate.action_start_tick = HAL_GetTick();
 }
 
 void Gate_Close(void)
 {
-  Servo_SetDoorsSameAngle(GATE_CLOSE_ANGLE);
+  Servo_SetDoorsSameAngle(AppConfig_Get()->gate_close_angle);
   s_gate.state = GATE_STATE_CLOSING;
   s_gate.action_start_tick = HAL_GetTick();
 }

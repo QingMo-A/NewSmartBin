@@ -1,19 +1,12 @@
 #include "app.h"
 
+#include "app_config.h"
 #include "debug_io.h"
 #include "gate.h"
 #include "motion.h"
 #include "sensors.h"
 
 #include <string.h>
-
-#define APP_MOVE_TIMEOUT_MS         20000U
-#define APP_PREOPEN_DELAY_MS        1000U
-#define APP_GATE_TIMEOUT_MS         3000U
-#define APP_DROP_WAIT_MS            1500U
-#define APP_POSTCLOSE_DELAY_MS      1000U
-#define APP_RETURN_HOME_TIMEOUT_MS  20000U
-#define APP_ERROR_BLINK_MS          200U
 
 typedef struct
 {
@@ -81,9 +74,26 @@ static void App_SetState(App_State_t new_state)
   }
 }
 
+static uint32_t App_StateElapsed(void)
+{
+  uint32_t now = HAL_GetTick();
+
+  if (now < s_app.state_enter_tick)
+  {
+    DEBUG_PRINT("WARN tick_backwards now=%lu enter=%lu state=%s",
+                (unsigned long)now,
+                (unsigned long)s_app.state_enter_tick,
+                App_StateName(s_app.state));
+    s_app.state_enter_tick = now;
+    return 0U;
+  }
+
+  return now - s_app.state_enter_tick;
+}
+
 static uint8_t App_StateTimedOut(uint32_t timeout_ms)
 {
-  return (uint8_t)((HAL_GetTick() - s_app.state_enter_tick) >= timeout_ms);
+  return (uint8_t)(App_StateElapsed() >= timeout_ms);
 }
 
 static void App_CompleteTask(void)
@@ -125,6 +135,7 @@ static void App_EnterError(void)
 
 void App_Init(void)
 {
+  AppConfig_Init();
   Motion_Init();
   Gate_Init();
   Sensors_Init();
@@ -207,6 +218,23 @@ void App_RequestReset(void)
   }
 }
 
+void App_RequestHardReset(void)
+{
+  DEBUG_PRINT("HARD_RESET request");
+  Motion_Stop();
+  s_app.active_bin = 0U;
+  s_app.active_direction = COMM_DIR_UNKNOWN;
+  memset(&s_app.active_color_spec, 0, sizeof(s_app.active_color_spec));
+  s_app.send_done_when_home = 0U;
+  s_app.drop_close_requested = 0U;
+  s_app.drop_wait_tick = 0U;
+  s_app.error_blink_tick = 0U;
+  Sensors_ClearTarget();
+  Gate_Close();
+  App_SetState(APP_STATE_IDLE);
+  Debug_UserLedSet(0U);
+}
+
 void App_OnCommandReceived(const Comm_Command_t *cmd)
 {
   if (cmd == NULL)
@@ -227,6 +255,12 @@ void App_OnCommandReceived(const Comm_Command_t *cmd)
       DEBUG_PRINT("CMD reset");
       (void)Comm_SendLine(COMM_TX_ACK);
       App_RequestReset();
+      break;
+
+    case COMM_CMD_HARD_RESET:
+      DEBUG_PRINT("CMD hard_reset");
+      (void)Comm_SendLine(COMM_TX_ACK);
+      App_RequestHardReset();
       break;
 
     case COMM_CMD_TARGET_BIN:
@@ -259,6 +293,58 @@ void App_OnCommandReceived(const Comm_Command_t *cmd)
       }
       break;
 
+    case COMM_CMD_COLOR_DEBUG:
+      Sensors_SetColorDebugEnabled(1U);
+      DEBUG_PRINT("CMD color_debug on");
+      (void)Comm_SendLine(COMM_TX_ACK);
+      break;
+
+    case COMM_CMD_STOP_COLOR:
+      Sensors_SetColorDebugEnabled(0U);
+      DEBUG_PRINT("CMD color_debug off");
+      (void)Comm_SendLine(COMM_TX_ACK);
+      break;
+
+    case COMM_CMD_CONFIG:
+      if (AppConfig_Apply(&cmd->config, cmd->config_mask) == HAL_OK)
+      {
+        DEBUG_PRINT("CMD cfg applied mask=0x%lX", (unsigned long)cmd->config_mask);
+        (void)Comm_SendLine(COMM_TX_ACK);
+      }
+      else
+      {
+        DEBUG_PRINT("CMD cfg invalid mask=0x%lX", (unsigned long)cmd->config_mask);
+        (void)Comm_SendLine(COMM_TX_ERR);
+      }
+      break;
+
+    case COMM_CMD_GET_CONFIG:
+    {
+      char cfg_line[160];
+
+      if (AppConfig_Format(cfg_line, sizeof(cfg_line)) == HAL_OK)
+      {
+        (void)Comm_SendLine(cfg_line);
+      }
+      else
+      {
+        (void)Comm_SendLine(COMM_TX_ERR);
+      }
+      break;
+    }
+
+    case COMM_CMD_HOME_COLOR:
+      Sensors_SetHomeColor(&cmd->color_spec);
+      DEBUG_PRINT("CMD home rgb=%u,%u,%u tol=%u,%u,%u",
+                  cmd->color_spec.r,
+                  cmd->color_spec.g,
+                  cmd->color_spec.b,
+                  cmd->color_spec.tol_r,
+                  cmd->color_spec.tol_g,
+                  cmd->color_spec.tol_b);
+      (void)Comm_SendLine(COMM_TX_ACK);
+      break;
+
     case COMM_CMD_INVALID:
     case COMM_CMD_NONE:
     default:
@@ -270,6 +356,8 @@ void App_OnCommandReceived(const Comm_Command_t *cmd)
 
 void App_Process(void)
 {
+  const App_Config_t *config = AppConfig_Get();
+
   Sensors_Update();
   Motion_Update();
   Gate_Update();
@@ -287,15 +375,17 @@ void App_Process(void)
         DEBUG_PRINT("MOVE reached bin=%u", s_app.active_bin);
         App_SetState(APP_STATE_PREOPEN_WAIT);
       }
-      else if (App_StateTimedOut(APP_MOVE_TIMEOUT_MS) != 0U)
+      else if (App_StateTimedOut(config->move_timeout_ms) != 0U)
       {
-        DEBUG_PRINT("TIMEOUT move_to_bin");
+        DEBUG_PRINT("TIMEOUT move_to_bin elapsed=%lu limit=%lu",
+                    (unsigned long)App_StateElapsed(),
+                    (unsigned long)config->move_timeout_ms);
         App_EnterError();
       }
       break;
 
     case APP_STATE_PREOPEN_WAIT:
-      if (App_StateTimedOut(APP_PREOPEN_DELAY_MS) != 0U)
+      if (App_StateTimedOut(config->preopen_delay_ms) != 0U)
       {
         DEBUG_PRINT("GATE preopen_wait_done");
         Gate_Open();
@@ -312,9 +402,11 @@ void App_Process(void)
         s_app.drop_wait_tick = HAL_GetTick();
         App_SetState(APP_STATE_WAITING_DROP);
       }
-      else if (App_StateTimedOut(APP_GATE_TIMEOUT_MS) != 0U)
+      else if (App_StateTimedOut(config->gate_timeout_ms) != 0U)
       {
-        DEBUG_PRINT("TIMEOUT gate_open");
+        DEBUG_PRINT("TIMEOUT gate_open elapsed=%lu limit=%lu",
+                    (unsigned long)App_StateElapsed(),
+                    (unsigned long)config->gate_timeout_ms);
         App_EnterError();
       }
       break;
@@ -322,7 +414,7 @@ void App_Process(void)
     case APP_STATE_WAITING_DROP:
       if (s_app.drop_close_requested == 0U)
       {
-        if ((HAL_GetTick() - s_app.drop_wait_tick) >= APP_DROP_WAIT_MS)
+        if ((HAL_GetTick() - s_app.drop_wait_tick) >= config->drop_wait_ms)
         {
           DEBUG_PRINT("DROP wait_done");
           Gate_Close();
@@ -336,15 +428,17 @@ void App_Process(void)
         DEBUG_PRINT("GATE closed");
         App_SetState(APP_STATE_POSTCLOSE_WAIT);
       }
-      else if (App_StateTimedOut(APP_GATE_TIMEOUT_MS) != 0U)
+      else if (App_StateTimedOut(config->gate_timeout_ms) != 0U)
       {
-        DEBUG_PRINT("TIMEOUT gate_close");
+        DEBUG_PRINT("TIMEOUT gate_close elapsed=%lu limit=%lu",
+                    (unsigned long)App_StateElapsed(),
+                    (unsigned long)config->gate_timeout_ms);
         App_EnterError();
       }
       break;
 
     case APP_STATE_POSTCLOSE_WAIT:
-      if (App_StateTimedOut(APP_POSTCLOSE_DELAY_MS) != 0U)
+      if (App_StateTimedOut(config->postclose_delay_ms) != 0U)
       {
         DEBUG_PRINT("MOVE postclose_wait_done");
         Motion_ReturnHome();
@@ -360,15 +454,17 @@ void App_Process(void)
         DEBUG_PRINT("HOME reached");
         App_CompleteTask();
       }
-      else if (App_StateTimedOut(APP_RETURN_HOME_TIMEOUT_MS) != 0U)
+      else if (App_StateTimedOut(config->return_home_timeout_ms) != 0U)
       {
-        DEBUG_PRINT("TIMEOUT return_home");
+        DEBUG_PRINT("TIMEOUT return_home elapsed=%lu limit=%lu",
+                    (unsigned long)App_StateElapsed(),
+                    (unsigned long)config->return_home_timeout_ms);
         App_EnterError();
       }
       break;
 
     case APP_STATE_ERROR:
-      if ((HAL_GetTick() - s_app.error_blink_tick) >= APP_ERROR_BLINK_MS)
+      if ((HAL_GetTick() - s_app.error_blink_tick) >= config->error_blink_ms)
       {
         s_app.error_blink_tick = HAL_GetTick();
         Debug_UserLedToggle();
@@ -391,4 +487,6 @@ uint8_t App_IsBusy(void)
 {
   return (uint8_t)(s_app.state != APP_STATE_IDLE);
 }
+
+
 

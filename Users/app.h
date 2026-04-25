@@ -25,6 +25,7 @@ void App_Process(void);
 HAL_StatusTypeDef App_StartTask(uint8_t bin_id, Comm_Direction_t direction, const Comm_ColorSpec_t *color_spec);
 void App_OnCommandReceived(const Comm_Command_t *cmd);
 void App_RequestReset(void);
+void App_RequestHardReset(void);
 App_State_t App_GetState(void);
 uint8_t App_IsBusy(void);
 

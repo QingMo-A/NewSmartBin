@@ -1,8 +1,7 @@
 #include "motion.h"
 
+#include "app_config.h"
 #include "Motor_L9110S.h"
-
-#define MOTION_PLATFORM_SPEED  80
 
 typedef enum
 {
@@ -52,20 +51,22 @@ void Motion_Init(void)
 
 void Motion_Update(void)
 {
+  int speed = (int)AppConfig_Get()->motion_speed;
+
   switch (s_motion.state)
   {
     case MOTION_STATE_TO_BIN:
-      Motion_RunDirection(s_motion.target_direction, MOTION_PLATFORM_SPEED);
+      Motion_RunDirection(s_motion.target_direction, speed);
       break;
 
     case MOTION_STATE_TO_HOME:
       if (s_motion.last_move_direction == COMM_DIR_LEFT)
       {
-        Motion_RunDirection(COMM_DIR_RIGHT, MOTION_PLATFORM_SPEED);
+        Motion_RunDirection(COMM_DIR_RIGHT, speed);
       }
       else if (s_motion.last_move_direction == COMM_DIR_RIGHT)
       {
-        Motion_RunDirection(COMM_DIR_LEFT, MOTION_PLATFORM_SPEED);
+        Motion_RunDirection(COMM_DIR_LEFT, speed);
       }
       else
       {

@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include "main.h"
+#include "app_config.h"
 
 typedef enum
 {
@@ -13,6 +14,12 @@ typedef enum
   COMM_CMD_TARGET_BIN,
   COMM_CMD_PING,
   COMM_CMD_RESET,
+  COMM_CMD_HARD_RESET,
+  COMM_CMD_COLOR_DEBUG,
+  COMM_CMD_STOP_COLOR,
+  COMM_CMD_CONFIG,
+  COMM_CMD_GET_CONFIG,
+  COMM_CMD_HOME_COLOR,
   COMM_CMD_INVALID
 } Comm_CommandType_t;
 
@@ -39,6 +46,8 @@ typedef struct
   uint8_t bin_id;
   Comm_Direction_t direction;
   Comm_ColorSpec_t color_spec;
+  App_Config_t config;
+  uint32_t config_mask;
   const char *raw_line;
 } Comm_Command_t;
 
@@ -62,3 +71,4 @@ UART_HandleTypeDef *Comm_GetUartHandle(void);
 #endif
 
 #endif /* COMM_H */
+
