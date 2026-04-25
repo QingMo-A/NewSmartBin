@@ -64,8 +64,8 @@ POINT_LAYOUT = {
         "point_name": "待机点",
         "direction_ascii": "CENTER",
         "color_ascii": "WHITE",
-        "ratio_rgb": (85, 85, 85),
-        "ratio_tolerance": (20, 20, 20),
+        "ratio_rgb": (79, 88, 88),
+        "ratio_tolerance": (30, 15, 29),
     },
     "BIN_1": {
         "point_name": "1号桶",
@@ -78,22 +78,22 @@ POINT_LAYOUT = {
         "point_name": "2号桶",
         "direction_ascii": "LEFT",
         "color_ascii": "GREEN",
-        "ratio_rgb": (52, 151, 52),
-        "ratio_tolerance": (18, 28, 18),
+        "ratio_rgb": (73, 125, 57),
+        "ratio_tolerance": (19, 16, 22),
     },
     "BIN_3": {
         "point_name": "3号桶",
         "direction_ascii": "RIGHT",
         "color_ascii": "BLUE",
-        "ratio_rgb": (65, 92, 98),
-        "ratio_tolerance": (12, 10, 10),
+        "ratio_rgb": (46, 102, 108),
+        "ratio_tolerance": (22, 17, 28),
     },
     "BIN_4": {
         "point_name": "4号桶",
         "direction_ascii": "RIGHT",
         "color_ascii": "YELLOW",
-        "ratio_rgb": (144, 87, 24),
-        "ratio_tolerance": (24, 20, 16),
+        "ratio_rgb": (99, 96, 60),
+        "ratio_tolerance": (29, 21, 35),
     },
 }
 
@@ -539,20 +539,23 @@ def summarize_color_debug_session():
     r_values = [s["r"] for s in color_debug_samples]
     g_values = [s["g"] for s in color_debug_samples]
     b_values = [s["b"] for s in color_debug_samples]
-    rr_values = [s["ratio_r"] for s in color_debug_samples]
-    rg_values = [s["ratio_g"] for s in color_debug_samples]
-    rb_values = [s["ratio_b"] for s in color_debug_samples]
+    rr_values = [s["calc_ratio_r"] for s in color_debug_samples]
+    rg_values = [s["calc_ratio_g"] for s in color_debug_samples]
+    rb_values = [s["calc_ratio_b"] for s in color_debug_samples]
+    stm32_rr_values = [s["ratio_r"] for s in color_debug_samples]
+    stm32_rg_values = [s["ratio_g"] for s in color_debug_samples]
+    stm32_rb_values = [s["ratio_b"] for s in color_debug_samples]
     home_hits = sum(1 for s in color_debug_samples if s["home"] != 0)
     bin_hits = sum(1 for s in color_debug_samples if s["bin"] != 0)
 
     avg_rgb = (_calc_avg(r_values), _calc_avg(g_values), _calc_avg(b_values))
-    max_dev_rgb = (
-        max(abs(v - avg_rgb[0]) for v in r_values),
-        max(abs(v - avg_rgb[1]) for v in g_values),
-        max(abs(v - avg_rgb[2]) for v in b_values),
-    )
-    recommended_tol = tuple(max(8, dev + 10) for dev in max_dev_rgb)
     avg_ratio = (_calc_avg(rr_values), _calc_avg(rg_values), _calc_avg(rb_values))
+    max_dev_ratio = (
+        max(abs(v - avg_ratio[0]) for v in rr_values),
+        max(abs(v - avg_ratio[1]) for v in rg_values),
+        max(abs(v - avg_ratio[2]) for v in rb_values),
+    )
+    recommended_tol = tuple(max(8, dev + 10) for dev in max_dev_ratio)
 
     matched = classify_tcs_rgb888(avg_rgb)
 
@@ -571,6 +574,14 @@ def summarize_color_debug_session():
         f"home_hits={home_hits}/{sample_count} bin_hits={bin_hits}/{sample_count}",
         flush=True,
     )
+    print(
+        f"[COLOR_DEBUG] STM32原始ratio(avg/min/max)="
+        f"({ _calc_avg(stm32_rr_values)},{ _calc_avg(stm32_rg_values)},{ _calc_avg(stm32_rb_values)})/"
+        f"({min(stm32_rr_values)},{min(stm32_rg_values)},{min(stm32_rb_values)})/"
+        f"({max(stm32_rr_values)},{max(stm32_rg_values)},{max(stm32_rb_values)}) "
+        f"(仅供对照，建议定义以本地重算ratio为准)",
+        flush=True,
+    )
 
     if matched is None:
         print("[COLOR_DEBUG] 与当前预设颜色都不够接近", flush=True)
@@ -586,6 +597,10 @@ def summarize_color_debug_session():
         f"(推荐直接作为 STM32 的 RGB/TOL 下发值)",
         flush=True,
     )
+    print(
+        f"[COLOR_DEBUG] 可直接写入: ratio_rgb = {avg_ratio} | ratio_tolerance = {recommended_tol}",
+        flush=True,
+    )
 
 
 def parse_sensors_debug_body(body):
@@ -597,6 +612,8 @@ def parse_sensors_debug_body(body):
     if not m:
         return None
 
+    calc_ratio = make_ratio_rgb((int(m.group(2)), int(m.group(3)), int(m.group(4))))
+
     sample = {
         "c": int(m.group(1)),
         "r": int(m.group(2)),
@@ -605,6 +622,9 @@ def parse_sensors_debug_body(body):
         "ratio_r": int(m.group(5)),
         "ratio_g": int(m.group(6)),
         "ratio_b": int(m.group(7)),
+        "calc_ratio_r": calc_ratio[0],
+        "calc_ratio_g": calc_ratio[1],
+        "calc_ratio_b": calc_ratio[2],
         "target_bin": int(m.group(8)),
         "target_r": int(m.group(9)),
         "target_g": int(m.group(10)),
@@ -680,18 +700,19 @@ def parse_stm32_debug_message(msg):
         r_raw = sample["r"]
         g_raw = sample["g"]
         b_raw = sample["b"]
+        calc_ratio = (sample["calc_ratio_r"], sample["calc_ratio_g"], sample["calc_ratio_b"])
 
         matched = classify_tcs_rgb888(rgb888)
         if matched is None:
             return (
                 f"TCS颜色读取: C={c_val} R={r_raw} G={g_raw} B={b_raw} "
-                f"RGB888={rgb888} ratio=({sample['ratio_r']},{sample['ratio_g']},{sample['ratio_b']}) "
+                f"RGB888={rgb888} ratio={calc_ratio} "
                 f"bin={sample['bin']} home={sample['home']} -> 判定=未知颜色"
             )
 
         return (
             f"TCS颜色读取: C={c_val} R={r_raw} G={g_raw} B={b_raw} "
-            f"RGB888={rgb888} ratio=({sample['ratio_r']},{sample['ratio_g']},{sample['ratio_b']}) "
+            f"RGB888={rgb888} ratio={calc_ratio} "
             f"bin={sample['bin']} home={sample['home']} -> "
             f"判定={matched['label']}({matched['color_name']}) "
             f"目标ratio_rgb={matched['target_rgb']} ratio_tol={matched['tolerance']} 距离={matched['distance']}"
