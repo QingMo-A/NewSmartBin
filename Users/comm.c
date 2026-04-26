@@ -20,6 +20,29 @@ static volatile uint8_t s_queue_tail = 0U;
 static volatile uint8_t s_queue_count = 0U;
 static volatile uint8_t s_pending_err = 0U;
 
+static void Comm_ResetRxBuffers(void)
+{
+  uint32_t primask;
+
+  primask = __get_PRIMASK();
+  __disable_irq();
+
+  s_rx_byte = 0U;
+  s_queue_head = 0U;
+  s_queue_tail = 0U;
+  s_queue_count = 0U;
+  s_pending_err = 0U;
+  memset(s_line_queue, 0, sizeof(s_line_queue));
+  memset(s_line_buffer, 0, sizeof(s_line_buffer));
+  s_line_index = 0U;
+  s_line_overflow = 0U;
+
+  if (primask == 0U)
+  {
+    __enable_irq();
+  }
+}
+
 static void Comm_StartReceiveIT(void)
 {
   if (s_comm_uart != NULL)
@@ -33,6 +56,36 @@ static void Comm_ResetCurrentLine(void)
   s_line_index = 0U;
   s_line_overflow = 0U;
   memset(s_line_buffer, 0, sizeof(s_line_buffer));
+}
+
+static void Comm_RecoverUart(UART_HandleTypeDef *huart)
+{
+  if (huart == NULL)
+  {
+    return;
+  }
+
+  Comm_ResetRxBuffers();
+
+  __HAL_UART_DISABLE_IT(huart, UART_IT_RXNE);
+  __HAL_UART_DISABLE_IT(huart, UART_IT_PE);
+  __HAL_UART_DISABLE_IT(huart, UART_IT_ERR);
+
+  __HAL_UART_CLEAR_OREFLAG(huart);
+  __HAL_UART_CLEAR_NEFLAG(huart);
+  __HAL_UART_CLEAR_FEFLAG(huart);
+  __HAL_UART_CLEAR_PEFLAG(huart);
+  __HAL_UART_SEND_REQ(huart, UART_RXDATA_FLUSH_REQUEST);
+
+  huart->ErrorCode = HAL_UART_ERROR_NONE;
+  huart->pRxBuffPtr = NULL;
+  huart->RxXferSize = 0U;
+  huart->RxXferCount = 0U;
+  huart->RxISR = NULL;
+  huart->ReceptionType = HAL_UART_RECEPTION_STANDARD;
+  huart->RxState = HAL_UART_STATE_READY;
+
+  Comm_StartReceiveIT();
 }
 
 static void Comm_QueueLine(const char *line)
@@ -358,12 +411,7 @@ void Comm_Init(UART_HandleTypeDef *huart, Comm_CommandHandler_t handler)
 {
   s_comm_uart = huart;
   s_command_handler = handler;
-  s_queue_head = 0U;
-  s_queue_tail = 0U;
-  s_queue_count = 0U;
-  s_pending_err = 0U;
-  Comm_ResetCurrentLine();
-  memset(s_line_queue, 0, sizeof(s_line_queue));
+  Comm_ResetRxBuffers();
   DEBUG_PRINT("COMM init");
   Comm_StartReceiveIT();
 }
@@ -551,11 +599,7 @@ void Comm_ErrorCallback(UART_HandleTypeDef *huart)
     return;
   }
 
-  DEBUG_PRINT("UART error");
-  __HAL_UART_CLEAR_OREFLAG(huart);
-  __HAL_UART_CLEAR_NEFLAG(huart);
-  __HAL_UART_CLEAR_FEFLAG(huart);
-  __HAL_UART_CLEAR_PEFLAG(huart);
-  Comm_StartReceiveIT();
+  DEBUG_PRINT("UART error code=%lu", (unsigned long)huart->ErrorCode);
+  Comm_RecoverUart(huart);
 }
 

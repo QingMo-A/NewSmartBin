@@ -16,6 +16,7 @@ void Sensors_ClearTarget(void);
 uint8_t Sensors_IsBinConfirmed(uint8_t bin_id);
 uint8_t Sensors_IsHomeConfirmed(void);
 void Sensors_SetColorDebugEnabled(uint8_t enabled);
+void Sensors_SetAutoColorDebugEnabled(uint8_t enabled);
 uint8_t Sensors_IsColorDebugEnabled(void);
 
 #ifdef __cplusplus

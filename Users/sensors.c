@@ -36,7 +36,8 @@ typedef struct
   Comm_ColorSpec_t home_color_spec;
   uint8_t bin_confirmed;
   uint8_t home_confirmed;
-  uint8_t color_debug_enabled;
+  uint8_t manual_color_debug_enabled;
+  uint8_t auto_color_debug_enabled;
   uint8_t bin_enter_count;
   uint8_t bin_exit_count;
   uint8_t home_enter_count;
@@ -50,6 +51,12 @@ typedef struct
 } Sensors_Context_t;
 
 static Sensors_Context_t s_sensors;
+
+static uint8_t Sensors_IsAnyColorDebugEnabled(void)
+{
+  return (uint8_t)((s_sensors.manual_color_debug_enabled != 0U) ||
+                   (s_sensors.auto_color_debug_enabled != 0U));
+}
 
 static uint8_t Sensors_ChannelDiff(uint8_t a, uint8_t b)
 {
@@ -259,7 +266,8 @@ void Sensors_Init(void)
   s_sensors.home_color_spec.tol_b = SENSORS_HOME_DEFAULT_TOL_B;
   s_sensors.bin_confirmed = 0U;
   s_sensors.home_confirmed = 0U;
-  s_sensors.color_debug_enabled = 0U;
+  s_sensors.manual_color_debug_enabled = 0U;
+  s_sensors.auto_color_debug_enabled = 0U;
   s_sensors.bin_enter_count = 0U;
   s_sensors.bin_exit_count = 0U;
   s_sensors.home_enter_count = 0U;
@@ -327,7 +335,7 @@ void Sensors_Update(void)
                                     SENSORS_BIN_ENTER_COUNT,
                                     SENSORS_BIN_EXIT_COUNT);
 
-  if ((s_sensors.color_debug_enabled != 0U) && ((HAL_GetTick() - s_sensors.last_debug_tick) >= SENSORS_DEBUG_PERIOD_MS))
+  if ((Sensors_IsAnyColorDebugEnabled() != 0U) && ((HAL_GetTick() - s_sensors.last_debug_tick) >= SENSORS_DEBUG_PERIOD_MS))
   {
     s_sensors.last_debug_tick = HAL_GetTick();
     DEBUG_PRINT("SENS C=%u RGB=%u,%u,%u ratio=%u,%u,%u tgt=%u rgb=%u,%u,%u tol=%u,%u,%u bin=%u home=%u",
@@ -412,11 +420,17 @@ uint8_t Sensors_IsHomeConfirmed(void)
 
 void Sensors_SetColorDebugEnabled(uint8_t enabled)
 {
-  s_sensors.color_debug_enabled = (uint8_t)((enabled != 0U) ? 1U : 0U);
+  s_sensors.manual_color_debug_enabled = (uint8_t)((enabled != 0U) ? 1U : 0U);
+  s_sensors.last_debug_tick = 0U;
+}
+
+void Sensors_SetAutoColorDebugEnabled(uint8_t enabled)
+{
+  s_sensors.auto_color_debug_enabled = (uint8_t)((enabled != 0U) ? 1U : 0U);
   s_sensors.last_debug_tick = 0U;
 }
 
 uint8_t Sensors_IsColorDebugEnabled(void)
 {
-  return s_sensors.color_debug_enabled;
+  return s_sensors.manual_color_debug_enabled;
 }

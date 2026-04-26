@@ -61,12 +61,19 @@ static const char *App_DirectionName(Comm_Direction_t direction)
   }
 }
 
+static uint8_t App_ShouldAutoColorDebug(App_State_t state)
+{
+  return (uint8_t)((state == APP_STATE_MOVING_TO_BIN) ||
+                   (state == APP_STATE_RETURNING_HOME));
+}
+
 static void App_SetState(App_State_t new_state)
 {
   App_State_t old_state = s_app.state;
 
   s_app.state = new_state;
   s_app.state_enter_tick = HAL_GetTick();
+  Sensors_SetAutoColorDebugEnabled(App_ShouldAutoColorDebug(new_state));
 
   if (old_state != new_state)
   {
