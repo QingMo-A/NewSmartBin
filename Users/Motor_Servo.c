@@ -16,6 +16,12 @@ static int Servo_ClampAngle(int angle)
     return angle;
 }
 
+static int Servo_AngleToPulseUs(int angle)
+{
+    angle = Servo_ClampAngle(angle);
+    return SERVO_MIN_PULSE_US + (angle * (SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US)) / 180;
+}
+
 void Servo_Init(void)
 {
     HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
@@ -27,8 +33,7 @@ void Servo_SetAngle(int id, int angle)
     int pulse_us;
     int compare;
 
-    angle = Servo_ClampAngle(angle);
-    pulse_us = SERVO_MIN_PULSE_US + (angle * (SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US)) / 180;
+    pulse_us = Servo_AngleToPulseUs(angle);
     compare = pulse_us;
 
     if (id == SERVO_ID_DOOR_1)

@@ -19,10 +19,10 @@ static const App_Config_t s_app_config_defaults =
   20000UL,
   200UL,
   80U,
-  0U,
-  90U,
-  500UL,
-  500UL
+  20U,
+  80U,
+  600UL,
+  600UL
 };
 
 static uint8_t AppConfig_IsMsValid(uint32_t value)

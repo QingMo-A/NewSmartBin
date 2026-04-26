@@ -20,6 +20,7 @@ static struct
 void Gate_Init(void)
 {
   Servo_Init();
+  Servo_SetDoorsSameAngle(AppConfig_Get()->gate_close_angle);
 
   s_gate.state = GATE_STATE_IDLE;
   s_gate.is_open = 0U;

@@ -129,10 +129,10 @@ STM32_RUNTIME_CONFIG_DEFAULTS = {
     "RH": 20000,  # 回 home 超时 ms
     "EB": 200,    # 错误状态 LED 闪烁间隔 ms
     "SP": 80,     # 平台移动速度，STM32 端限制 0~90
-    "OA": 0,      # 开门角度，0~180
-    "CA": 90,     # 关门角度，0~180
-    "OS": 500,    # 开门动作等待 ms
-    "CS": 500,    # 关门动作等待 ms
+    "OA": 20,     # 开门角度，MG90S 保守起始值
+    "CA": 80,     # 关门角度，MG90S 保守起始值
+    "OS": 600,    # 开门动作等待 ms
+    "CS": 600,    # 关门动作等待 ms
 }
 
 STM32_RUNTIME_CONFIG_LIMITS = {
