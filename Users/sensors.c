@@ -285,6 +285,7 @@ void Sensors_Init(void)
 void Sensors_Update(void)
 {
   RGB raw_rgb;
+  RGB corrected_rgb;
   uint32_t rgb888;
   uint8_t instant_home_match;
   uint8_t instant_bin_match = 0U;
@@ -303,13 +304,14 @@ void Sensors_Update(void)
 
   s_sensors.last_update_tick = HAL_GetTick();
   raw_rgb = TCS34725_Get_RGBData();
-  rgb888 = TCS34725_GetRGB888(raw_rgb);
+  corrected_rgb = TCS34725_GetCalibratedRgb(raw_rgb);
+  rgb888 = ((uint32_t)corrected_rgb.R << 16) | ((uint32_t)corrected_rgb.G << 8) | (uint32_t)corrected_rgb.B;
 
   s_sensors.last_r = (uint8_t)(rgb888 >> 16);
   s_sensors.last_g = (uint8_t)(rgb888 >> 8);
   s_sensors.last_b = (uint8_t)rgb888;
 
-  instant_home_match = Sensors_IsTargetColorMatch(raw_rgb, &s_sensors.home_color_spec, NULL);
+  instant_home_match = Sensors_IsTargetColorMatch(corrected_rgb, &s_sensors.home_color_spec, NULL);
   (void)Sensors_UpdateDebouncedFlag(instant_home_match,
                                     &s_sensors.home_confirmed,
                                     &s_sensors.home_enter_count,
@@ -319,7 +321,7 @@ void Sensors_Update(void)
 
   if (s_sensors.target_bin != 0U)
   {
-    instant_bin_match = Sensors_IsTargetColorMatch(raw_rgb,
+    instant_bin_match = Sensors_IsTargetColorMatch(corrected_rgb,
                                                    &s_sensors.target_color_spec,
                                                    &s_sensors.last_ratio);
   }

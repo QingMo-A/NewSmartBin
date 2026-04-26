@@ -63,9 +63,9 @@ POINT_LAYOUT = {
     "HOME": {
         "point_name": "待机点",
         "direction_ascii": "CENTER",
-        "color_ascii": "WHITE",
-        "ratio_rgb": (79, 88, 88),
-        "ratio_tolerance": (30, 15, 29),
+        "color_ascii": "PURPLE",
+        "ratio_rgb": (93, 86, 76),
+        "ratio_tolerance": (11, 11, 11),
     },
     "BIN_1": {
         "point_name": "1号桶",
@@ -85,15 +85,15 @@ POINT_LAYOUT = {
         "point_name": "3号桶",
         "direction_ascii": "RIGHT",
         "color_ascii": "BLUE",
-        "ratio_rgb": (46, 102, 108),
-        "ratio_tolerance": (22, 17, 28),
+        "ratio_rgb": (51,106,98),
+        "ratio_tolerance": (12,12,11),
     },
     "BIN_4": {
         "point_name": "4号桶",
         "direction_ascii": "RIGHT",
         "color_ascii": "YELLOW",
-        "ratio_rgb": (99, 96, 60),
-        "ratio_tolerance": (29, 21, 35),
+        "ratio_rgb": (102, 97, 56),
+        "ratio_tolerance": (11, 11, 11),
     },
 }
 

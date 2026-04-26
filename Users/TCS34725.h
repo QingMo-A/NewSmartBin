@@ -61,6 +61,7 @@ uint8_t TCS34725_WriteByte(uint8_t addr, uint8_t data);
 uint8_t TCS34725_Init(void);
 void integrationTime(float ms);
 RGB TCS34725_Get_RGBData(void);
+RGB TCS34725_GetCalibratedRgb(RGB raw);
 uint32_t TCS34725_GetRGB888(RGB rgb);
 uint16_t TCS34725_GetRGB565(RGB rgb);
 
