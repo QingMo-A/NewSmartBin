@@ -7,7 +7,8 @@ typedef enum
 {
   MOTION_STATE_IDLE = 0,
   MOTION_STATE_TO_BIN,
-  MOTION_STATE_TO_HOME
+  MOTION_STATE_TO_HOME,
+  MOTION_STATE_MANUAL
 } Motion_State_t;
 
 typedef struct
@@ -18,6 +19,9 @@ typedef struct
   uint8_t at_home;
   Comm_Direction_t target_direction;
   Comm_Direction_t last_move_direction;
+  Comm_Direction_t manual_direction;
+  uint32_t manual_start_tick;
+  uint32_t manual_duration_ms;
 } Motion_Context_t;
 
 static Motion_Context_t s_motion;
@@ -46,6 +50,9 @@ void Motion_Init(void)
   s_motion.at_home = 1U;
   s_motion.target_direction = COMM_DIR_UNKNOWN;
   s_motion.last_move_direction = COMM_DIR_UNKNOWN;
+  s_motion.manual_direction = COMM_DIR_UNKNOWN;
+  s_motion.manual_start_tick = 0U;
+  s_motion.manual_duration_ms = 0U;
   Motor_Stop();
 }
 
@@ -74,6 +81,20 @@ void Motion_Update(void)
       }
       break;
 
+    case MOTION_STATE_MANUAL:
+      if ((HAL_GetTick() - s_motion.manual_start_tick) >= s_motion.manual_duration_ms)
+      {
+        Motor_Stop();
+        s_motion.state = MOTION_STATE_IDLE;
+        s_motion.manual_direction = COMM_DIR_UNKNOWN;
+        s_motion.manual_duration_ms = 0U;
+      }
+      else
+      {
+        Motion_RunDirection(s_motion.manual_direction, speed);
+      }
+      break;
+
     case MOTION_STATE_IDLE:
     default:
       break;
@@ -87,6 +108,24 @@ void Motion_MoveToBin(uint8_t bin_id, Comm_Direction_t direction)
   s_motion.last_move_direction = direction;
   s_motion.state = MOTION_STATE_TO_BIN;
   s_motion.at_home = 0U;
+}
+
+void Motion_ManualRun(Comm_Direction_t direction, uint32_t duration_ms)
+{
+  if ((direction == COMM_DIR_UNKNOWN) || (duration_ms == 0U))
+  {
+    Motion_Stop();
+    return;
+  }
+
+  s_motion.target_bin = 0U;
+  s_motion.current_bin = 0U;
+  s_motion.at_home = 0U;
+  s_motion.target_direction = COMM_DIR_UNKNOWN;
+  s_motion.manual_direction = direction;
+  s_motion.manual_start_tick = HAL_GetTick();
+  s_motion.manual_duration_ms = duration_ms;
+  s_motion.state = MOTION_STATE_MANUAL;
 }
 
 uint8_t Motion_IsAtTarget(void)
@@ -108,6 +147,11 @@ uint8_t Motion_IsAtHome(void)
   return (uint8_t)((s_motion.state == MOTION_STATE_IDLE) && (s_motion.at_home != 0U));
 }
 
+uint8_t Motion_IsBusy(void)
+{
+  return (uint8_t)(s_motion.state != MOTION_STATE_IDLE);
+}
+
 void Motion_Stop(void)
 {
   if (s_motion.state == MOTION_STATE_TO_BIN)
@@ -121,8 +165,16 @@ void Motion_Stop(void)
     s_motion.target_bin = 0U;
     s_motion.at_home = 1U;
   }
+  else if (s_motion.state == MOTION_STATE_MANUAL)
+  {
+    s_motion.current_bin = 0U;
+    s_motion.target_bin = 0U;
+    s_motion.at_home = 0U;
+  }
 
   Motor_Stop();
   s_motion.state = MOTION_STATE_IDLE;
+  s_motion.manual_direction = COMM_DIR_UNKNOWN;
+  s_motion.manual_duration_ms = 0U;
 }
 

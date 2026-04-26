@@ -74,6 +74,11 @@ void Gate_Close(void)
   s_gate.action_start_tick = HAL_GetTick();
 }
 
+uint8_t Gate_IsBusy(void)
+{
+  return (uint8_t)(s_gate.state != GATE_STATE_IDLE);
+}
+
 uint8_t Gate_IsOpenDone(void)
 {
   return (uint8_t)((s_gate.state == GATE_STATE_IDLE) && (s_gate.is_open != 0U));

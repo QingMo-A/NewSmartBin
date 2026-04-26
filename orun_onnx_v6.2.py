@@ -496,7 +496,8 @@ def start_console_input_worker():
     worker.start()
     print(
         "[INIT] 运行时命令: help, pause, resume, reset, hard_reset, ping, get_cfg, cfg, "
-        "color_debug, stop_color, target <1-4>, send <raw>, quit",
+        "color_debug, stop_color, move <left|right> <sec>, gate <open|close>, "
+        "target <1-4>, send <raw>, quit",
         flush=True,
     )
 
@@ -1200,6 +1201,8 @@ def print_runtime_help():
         "  home_cfg              立即下发 HOME 颜色定义\n"
         "  color_debug           开启 STM32 颜色调试输出\n"
         "  stop_color            关闭 STM32 颜色调试输出\n"
+        "  move <left|right> <sec>  手动控制轮子转动，例如 move right 1.5\n"
+        "  gate <open|close>     手动控制舵机开门或关门\n"
         "  target <1-4>          手动发送目标桶指令，例如 target 3\n"
         "  send <raw>            发送原始串口消息，例如 send [$GET_CFG]\n"
         "  quit / exit           退出 Python 脚本",
@@ -1250,6 +1253,45 @@ def handle_user_command(command):
     elif verb == "stop_color":
         send_serial_message(ser, "[$StopColor]")
         stop_color_debug_session()
+    elif verb == "move":
+        move_parts = arg.split()
+        if len(move_parts) != 2:
+            print("[CMD] move 命令格式: move <left|right> <sec>，例如 move right 1.5", flush=True)
+            return
+
+        direction = move_parts[0].strip().lower()
+        if direction not in ("left", "right"):
+            print("[CMD] move 方向只能是 left 或 right", flush=True)
+            return
+
+        try:
+            duration_sec = float(move_parts[1])
+        except ValueError:
+            print("[CMD] move 时间必须是数字，例如 1.5", flush=True)
+            return
+
+        if (duration_sec <= 0.0) or (duration_sec > 60.0):
+            print("[CMD] move 时间范围必须在 0~60 秒之间", flush=True)
+            return
+
+        duration_ms = max(1, int(round(duration_sec * 1000.0)))
+        recognition_enabled = False
+        reset_cycle(f"用户手动轮子控制: {direction} {duration_sec:.2f}s")
+        send_serial_message(
+            ser,
+            f"[$MANUAL_MOVE:DIR:{direction.upper()},MS:{duration_ms}]"
+        )
+        log_event(f"已发送手动轮子控制: DIR={direction.upper()} MS={duration_ms}")
+    elif verb == "gate":
+        action = arg.strip().lower()
+        if action not in ("open", "close"):
+            print("[CMD] gate 命令格式: gate <open|close>", flush=True)
+            return
+
+        recognition_enabled = False
+        reset_cycle(f"用户手动舵机控制: {action}")
+        send_serial_message(ser, f"[$MANUAL_GATE:{action.upper()}]")
+        log_event(f"已发送手动舵机控制: {action.upper()}")
     elif verb == "target":
         try:
             bin_id = int(arg)

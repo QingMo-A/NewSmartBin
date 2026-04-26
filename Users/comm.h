@@ -20,6 +20,8 @@ typedef enum
   COMM_CMD_CONFIG,
   COMM_CMD_GET_CONFIG,
   COMM_CMD_HOME_COLOR,
+  COMM_CMD_MANUAL_MOVE,
+  COMM_CMD_MANUAL_GATE,
   COMM_CMD_INVALID
 } Comm_CommandType_t;
 
@@ -48,6 +50,8 @@ typedef struct
   Comm_ColorSpec_t color_spec;
   App_Config_t config;
   uint32_t config_mask;
+  uint32_t duration_ms;
+  uint8_t gate_open;
   const char *raw_line;
 } Comm_Command_t;
 

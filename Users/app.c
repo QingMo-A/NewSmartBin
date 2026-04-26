@@ -23,6 +23,9 @@ typedef struct
 
 static App_Context_t s_app;
 
+void App_RequestReset(void);
+void App_RequestHardReset(void);
+
 static const char *App_StateName(App_State_t state)
 {
   switch (state)
@@ -41,6 +44,8 @@ static const char *App_StateName(App_State_t state)
       return "POSTCLOSE_WAIT";
     case APP_STATE_RETURNING_HOME:
       return "RETURNING_HOME";
+    case APP_STATE_MANUAL_CONTROL:
+      return "MANUAL_CONTROL";
     case APP_STATE_ERROR:
       return "ERROR";
     default:
@@ -138,6 +143,43 @@ static void App_EnterError(void)
   s_app.error_blink_tick = HAL_GetTick();
   DEBUG_PRINT("ERROR enter from=%s", App_StateName(prev_state));
   (void)Comm_SendLine(COMM_TX_ERR);
+}
+
+static HAL_StatusTypeDef App_StartManualMove(Comm_Direction_t direction, uint32_t duration_ms)
+{
+  if ((direction == COMM_DIR_UNKNOWN) || (duration_ms == 0U))
+  {
+    return HAL_ERROR;
+  }
+
+  App_RequestHardReset();
+  Motion_ManualRun(direction, duration_ms);
+  DEBUG_PRINT("MANUAL move dir=%s ms=%lu",
+              App_DirectionName(direction),
+              (unsigned long)duration_ms);
+  App_SetState(APP_STATE_MANUAL_CONTROL);
+  Debug_UserLedSet(1U);
+  return HAL_OK;
+}
+
+static HAL_StatusTypeDef App_StartManualGate(uint8_t gate_open)
+{
+  App_RequestHardReset();
+
+  if (gate_open != 0U)
+  {
+    Gate_Open();
+    DEBUG_PRINT("MANUAL gate open");
+  }
+  else
+  {
+    Gate_Close();
+    DEBUG_PRINT("MANUAL gate close");
+  }
+
+  App_SetState(APP_STATE_MANUAL_CONTROL);
+  Debug_UserLedSet(1U);
+  return HAL_OK;
 }
 
 void App_Init(void)
@@ -352,6 +394,26 @@ void App_OnCommandReceived(const Comm_Command_t *cmd)
       (void)Comm_SendLine(COMM_TX_ACK);
       break;
 
+    case COMM_CMD_MANUAL_MOVE:
+      DEBUG_PRINT("CMD manual_move dir=%s ms=%lu",
+                  App_DirectionName(cmd->direction),
+                  (unsigned long)cmd->duration_ms);
+      (void)Comm_SendLine(COMM_TX_ACK);
+      if (App_StartManualMove(cmd->direction, cmd->duration_ms) != HAL_OK)
+      {
+        App_EnterError();
+      }
+      break;
+
+    case COMM_CMD_MANUAL_GATE:
+      DEBUG_PRINT("CMD manual_gate %s", (cmd->gate_open != 0U) ? "OPEN" : "CLOSE");
+      (void)Comm_SendLine(COMM_TX_ACK);
+      if (App_StartManualGate(cmd->gate_open) != HAL_OK)
+      {
+        App_EnterError();
+      }
+      break;
+
     case COMM_CMD_INVALID:
     case COMM_CMD_NONE:
     default:
@@ -467,6 +529,15 @@ void App_Process(void)
                     (unsigned long)App_StateElapsed(),
                     (unsigned long)config->return_home_timeout_ms);
         App_EnterError();
+      }
+      break;
+
+    case APP_STATE_MANUAL_CONTROL:
+      if ((Motion_IsBusy() == 0U) && (Gate_IsBusy() == 0U))
+      {
+        DEBUG_PRINT("MANUAL done");
+        App_SetState(APP_STATE_IDLE);
+        Debug_UserLedSet(0U);
       }
       break;
 

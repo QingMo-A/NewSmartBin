@@ -257,6 +257,85 @@ static uint8_t Comm_ParseHomeColorLine(const char *line, Comm_Command_t *cmd)
   return 1U;
 }
 
+static uint8_t Comm_ParseManualMoveLine(const char *line, Comm_Command_t *cmd)
+{
+  char dir_buf[8];
+  unsigned int duration_ms;
+  int parsed_len;
+
+  if ((line == NULL) || (cmd == NULL))
+  {
+    return 0U;
+  }
+
+  parsed_len = 0;
+  if (sscanf(line,
+             "[$MANUAL_MOVE:DIR:%7[^,],MS:%u]%n",
+             dir_buf,
+             &duration_ms,
+             &parsed_len) != 2)
+  {
+    return 0U;
+  }
+
+  if ((parsed_len <= 0) || (line[parsed_len] != '\0'))
+  {
+    return 0U;
+  }
+
+  if ((duration_ms == 0U) || (duration_ms > 60000U))
+  {
+    return 0U;
+  }
+
+  if (Comm_ParseDirection(dir_buf, &cmd->direction) == 0U)
+  {
+    return 0U;
+  }
+
+  cmd->type = COMM_CMD_MANUAL_MOVE;
+  cmd->duration_ms = (uint32_t)duration_ms;
+  return 1U;
+}
+
+static uint8_t Comm_ParseManualGateLine(const char *line, Comm_Command_t *cmd)
+{
+  char action_buf[8];
+  int parsed_len;
+
+  if ((line == NULL) || (cmd == NULL))
+  {
+    return 0U;
+  }
+
+  parsed_len = 0;
+  if (sscanf(line, "[$MANUAL_GATE:%7[^]]]%n", action_buf, &parsed_len) != 1)
+  {
+    return 0U;
+  }
+
+  if ((parsed_len <= 0) || (line[parsed_len] != '\0'))
+  {
+    return 0U;
+  }
+
+  if (strcmp(action_buf, "OPEN") == 0)
+  {
+    cmd->type = COMM_CMD_MANUAL_GATE;
+    cmd->gate_open = 1U;
+    return 1U;
+  }
+
+  if (strcmp(action_buf, "CLOSE") == 0)
+  {
+    cmd->type = COMM_CMD_MANUAL_GATE;
+    cmd->gate_open = 0U;
+    return 1U;
+  }
+
+  return 0U;
+}
+
 static uint8_t Comm_SetConfigValue(const char *key, unsigned int value, App_Config_t *config, uint32_t *mask)
 {
   if ((key == NULL) || (config == NULL) || (mask == NULL))
@@ -493,6 +572,8 @@ void Comm_ProcessLine(const char *line)
   memset(&cmd.color_spec, 0, sizeof(cmd.color_spec));
   cmd.config = *AppConfig_Get();
   cmd.config_mask = 0UL;
+  cmd.duration_ms = 0U;
+  cmd.gate_open = 0U;
   cmd.raw_line = line;
 
   if (strcmp(line, "[$PING]") == 0)
@@ -520,6 +601,14 @@ void Comm_ProcessLine(const char *line)
     cmd.type = COMM_CMD_GET_CONFIG;
   }
   else if (Comm_ParseConfigLine(line, &cmd) != 0U)
+  {
+    cmd.raw_line = line;
+  }
+  else if (Comm_ParseManualMoveLine(line, &cmd) != 0U)
+  {
+    cmd.raw_line = line;
+  }
+  else if (Comm_ParseManualGateLine(line, &cmd) != 0U)
   {
     cmd.raw_line = line;
   }
