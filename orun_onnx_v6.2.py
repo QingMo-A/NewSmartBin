@@ -1398,8 +1398,8 @@ while True:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         wait_meta = get_bin_metadata(final_bin)
         wait_dir = wait_meta["direction_ascii"] if wait_meta else "UNKNOWN"
-        wait_rgb = wait_meta["rgb"] if wait_meta else ("?", "?", "?")
-        wait_tol = wait_meta["tolerance"] if wait_meta else ("?", "?", "?")
+        wait_rgb = wait_meta["ratio_rgb"] if wait_meta else ("?", "?", "?")
+        wait_tol = wait_meta["ratio_tolerance"] if wait_meta else ("?", "?", "?")
 
         cv2.putText(debug_frame, f"Bin: {final_bin}", (20, 170),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
@@ -1415,8 +1415,8 @@ while True:
         if now - last_print_time > print_interval:
             wait_meta = get_bin_metadata(final_bin)
             wait_dir = wait_meta["direction_ascii"] if wait_meta else "UNKNOWN"
-            wait_rgb = wait_meta["rgb"] if wait_meta else ("?", "?", "?")
-            wait_tol = wait_meta["tolerance"] if wait_meta else ("?", "?", "?")
+            wait_rgb = wait_meta["ratio_rgb"] if wait_meta else ("?", "?", "?")
+            wait_tol = wait_meta["ratio_tolerance"] if wait_meta else ("?", "?", "?")
             print(
                 f"[STATUS] State={state} WaitingSTM32=True "
                 f"TargetSent={target_sent} "
