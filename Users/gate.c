@@ -20,7 +20,6 @@ static struct
 void Gate_Init(void)
 {
   Servo_Init();
-  Servo_SetDoorsSameAngle(AppConfig_Get()->gate_close_angle);
 
   s_gate.state = GATE_STATE_IDLE;
   s_gate.is_open = 0U;
@@ -62,14 +61,18 @@ void Gate_Update(void)
 
 void Gate_Open(void)
 {
-  Servo_SetDoorsSameAngle(AppConfig_Get()->gate_open_angle);
+  const App_Config_t *config = AppConfig_Get();
+
+  Servo_SetDoorAngles(config->gate1_open_angle, config->gate2_open_angle);
   s_gate.state = GATE_STATE_OPENING;
   s_gate.action_start_tick = HAL_GetTick();
 }
 
 void Gate_Close(void)
 {
-  Servo_SetDoorsSameAngle(AppConfig_Get()->gate_close_angle);
+  const App_Config_t *config = AppConfig_Get();
+
+  Servo_SetDoorAngles(config->gate1_close_angle, config->gate2_close_angle);
   s_gate.state = GATE_STATE_CLOSING;
   s_gate.action_start_tick = HAL_GetTick();
 }

@@ -17,8 +17,10 @@ typedef struct
   uint32_t return_home_timeout_ms;
   uint32_t error_blink_ms;
   uint8_t motion_speed;
-  uint8_t gate_open_angle;
-  uint8_t gate_close_angle;
+  uint8_t gate1_open_angle;
+  uint8_t gate1_close_angle;
+  uint8_t gate2_open_angle;
+  uint8_t gate2_close_angle;
   uint32_t gate_open_settle_ms;
   uint32_t gate_close_settle_ms;
 } App_Config_t;
@@ -31,12 +33,14 @@ typedef struct
 #define APP_CONFIG_MASK_RETURN_HOME_TIMEOUT_MS (1UL << 5)
 #define APP_CONFIG_MASK_ERROR_BLINK_MS         (1UL << 6)
 #define APP_CONFIG_MASK_MOTION_SPEED           (1UL << 7)
-#define APP_CONFIG_MASK_GATE_OPEN_ANGLE        (1UL << 8)
-#define APP_CONFIG_MASK_GATE_CLOSE_ANGLE       (1UL << 9)
-#define APP_CONFIG_MASK_GATE_OPEN_SETTLE_MS    (1UL << 10)
-#define APP_CONFIG_MASK_GATE_CLOSE_SETTLE_MS   (1UL << 11)
+#define APP_CONFIG_MASK_GATE1_OPEN_ANGLE       (1UL << 8)
+#define APP_CONFIG_MASK_GATE1_CLOSE_ANGLE      (1UL << 9)
+#define APP_CONFIG_MASK_GATE2_OPEN_ANGLE       (1UL << 10)
+#define APP_CONFIG_MASK_GATE2_CLOSE_ANGLE      (1UL << 11)
+#define APP_CONFIG_MASK_GATE_OPEN_SETTLE_MS    (1UL << 12)
+#define APP_CONFIG_MASK_GATE_CLOSE_SETTLE_MS   (1UL << 13)
 
-#define APP_CONFIG_MASK_ALL                    (0x00000FFFUL)
+#define APP_CONFIG_MASK_ALL                    (0x00003FFFUL)
 
 void AppConfig_Init(void);
 const App_Config_t *AppConfig_Get(void);

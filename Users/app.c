@@ -197,7 +197,6 @@ void App_Init(void)
   s_app.drop_wait_tick = 0U;
   s_app.error_blink_tick = 0U;
   App_SetState(APP_STATE_IDLE);
-  Gate_Close();
   Sensors_ClearTarget();
   Debug_UserLedSet(0U);
   DEBUG_PRINT("APP init");
@@ -381,6 +380,12 @@ void App_OnCommandReceived(const Comm_Command_t *cmd)
       }
       break;
     }
+
+    case COMM_CMD_INIT_GATE:
+      Gate_Close();
+      DEBUG_PRINT("CMD init_gate close");
+      (void)Comm_SendLine(COMM_TX_ACK);
+      break;
 
     case COMM_CMD_HOME_COLOR:
       Sensors_SetHomeColor(&cmd->color_spec);

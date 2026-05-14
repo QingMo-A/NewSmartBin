@@ -5,8 +5,8 @@
 #include <string.h>
 #include <stdio.h>
 
-#define COMM_RX_LINE_MAX_LEN 128U
-#define COMM_RX_QUEUE_DEPTH  4U
+#define COMM_RX_LINE_MAX_LEN 160U
+#define COMM_RX_QUEUE_DEPTH  8U
 
 static UART_HandleTypeDef *s_comm_uart = NULL;
 static Comm_CommandHandler_t s_command_handler = NULL;
@@ -393,8 +393,9 @@ static uint8_t Comm_SetConfigValue(const char *key, unsigned int value, App_Conf
     {
       return 0U;
     }
-    config->gate_open_angle = (uint8_t)value;
-    *mask |= APP_CONFIG_MASK_GATE_OPEN_ANGLE;
+    config->gate1_open_angle = (uint8_t)value;
+    config->gate2_open_angle = (uint8_t)value;
+    *mask |= APP_CONFIG_MASK_GATE1_OPEN_ANGLE | APP_CONFIG_MASK_GATE2_OPEN_ANGLE;
   }
   else if (strcmp(key, "CA") == 0)
   {
@@ -402,8 +403,45 @@ static uint8_t Comm_SetConfigValue(const char *key, unsigned int value, App_Conf
     {
       return 0U;
     }
-    config->gate_close_angle = (uint8_t)value;
-    *mask |= APP_CONFIG_MASK_GATE_CLOSE_ANGLE;
+    config->gate1_close_angle = (uint8_t)value;
+    config->gate2_close_angle = (uint8_t)value;
+    *mask |= APP_CONFIG_MASK_GATE1_CLOSE_ANGLE | APP_CONFIG_MASK_GATE2_CLOSE_ANGLE;
+  }
+  else if (strcmp(key, "O1") == 0)
+  {
+    if (value > 255U)
+    {
+      return 0U;
+    }
+    config->gate1_open_angle = (uint8_t)value;
+    *mask |= APP_CONFIG_MASK_GATE1_OPEN_ANGLE;
+  }
+  else if (strcmp(key, "C1") == 0)
+  {
+    if (value > 255U)
+    {
+      return 0U;
+    }
+    config->gate1_close_angle = (uint8_t)value;
+    *mask |= APP_CONFIG_MASK_GATE1_CLOSE_ANGLE;
+  }
+  else if (strcmp(key, "O2") == 0)
+  {
+    if (value > 255U)
+    {
+      return 0U;
+    }
+    config->gate2_open_angle = (uint8_t)value;
+    *mask |= APP_CONFIG_MASK_GATE2_OPEN_ANGLE;
+  }
+  else if (strcmp(key, "C2") == 0)
+  {
+    if (value > 255U)
+    {
+      return 0U;
+    }
+    config->gate2_close_angle = (uint8_t)value;
+    *mask |= APP_CONFIG_MASK_GATE2_CLOSE_ANGLE;
   }
   else if (strcmp(key, "OS") == 0)
   {
@@ -599,6 +637,10 @@ void Comm_ProcessLine(const char *line)
   else if (strcmp(line, "[$GET_CFG]") == 0)
   {
     cmd.type = COMM_CMD_GET_CONFIG;
+  }
+  else if (strcmp(line, "[$INIT_GATE]") == 0)
+  {
+    cmd.type = COMM_CMD_INIT_GATE;
   }
   else if (Comm_ParseConfigLine(line, &cmd) != 0U)
   {

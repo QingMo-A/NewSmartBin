@@ -21,6 +21,8 @@ static const App_Config_t s_app_config_defaults =
   80U,
   20U,
   80U,
+  20U,
+  80U,
   600UL,
   600UL
 };
@@ -102,13 +104,23 @@ HAL_StatusTypeDef AppConfig_Apply(const App_Config_t *config, uint32_t mask)
   {
     return HAL_ERROR;
   }
-  if (((mask & APP_CONFIG_MASK_GATE_OPEN_ANGLE) != 0UL) &&
-      (AppConfig_IsGateAngleValid(config->gate_open_angle) == 0U))
+  if (((mask & APP_CONFIG_MASK_GATE1_OPEN_ANGLE) != 0UL) &&
+      (AppConfig_IsGateAngleValid(config->gate1_open_angle) == 0U))
   {
     return HAL_ERROR;
   }
-  if (((mask & APP_CONFIG_MASK_GATE_CLOSE_ANGLE) != 0UL) &&
-      (AppConfig_IsGateAngleValid(config->gate_close_angle) == 0U))
+  if (((mask & APP_CONFIG_MASK_GATE1_CLOSE_ANGLE) != 0UL) &&
+      (AppConfig_IsGateAngleValid(config->gate1_close_angle) == 0U))
+  {
+    return HAL_ERROR;
+  }
+  if (((mask & APP_CONFIG_MASK_GATE2_OPEN_ANGLE) != 0UL) &&
+      (AppConfig_IsGateAngleValid(config->gate2_open_angle) == 0U))
+  {
+    return HAL_ERROR;
+  }
+  if (((mask & APP_CONFIG_MASK_GATE2_CLOSE_ANGLE) != 0UL) &&
+      (AppConfig_IsGateAngleValid(config->gate2_close_angle) == 0U))
   {
     return HAL_ERROR;
   }
@@ -155,13 +167,21 @@ HAL_StatusTypeDef AppConfig_Apply(const App_Config_t *config, uint32_t mask)
   {
     s_app_config.motion_speed = config->motion_speed;
   }
-  if ((mask & APP_CONFIG_MASK_GATE_OPEN_ANGLE) != 0UL)
+  if ((mask & APP_CONFIG_MASK_GATE1_OPEN_ANGLE) != 0UL)
   {
-    s_app_config.gate_open_angle = config->gate_open_angle;
+    s_app_config.gate1_open_angle = config->gate1_open_angle;
   }
-  if ((mask & APP_CONFIG_MASK_GATE_CLOSE_ANGLE) != 0UL)
+  if ((mask & APP_CONFIG_MASK_GATE1_CLOSE_ANGLE) != 0UL)
   {
-    s_app_config.gate_close_angle = config->gate_close_angle;
+    s_app_config.gate1_close_angle = config->gate1_close_angle;
+  }
+  if ((mask & APP_CONFIG_MASK_GATE2_OPEN_ANGLE) != 0UL)
+  {
+    s_app_config.gate2_open_angle = config->gate2_open_angle;
+  }
+  if ((mask & APP_CONFIG_MASK_GATE2_CLOSE_ANGLE) != 0UL)
+  {
+    s_app_config.gate2_close_angle = config->gate2_close_angle;
   }
   if ((mask & APP_CONFIG_MASK_GATE_OPEN_SETTLE_MS) != 0UL)
   {
@@ -186,7 +206,7 @@ HAL_StatusTypeDef AppConfig_Format(char *buffer, uint16_t buffer_len)
 
   len = snprintf(buffer,
                  buffer_len,
-                 "[$CFG:MT=%lu,PD=%lu,GT=%lu,DW=%lu,PC=%lu,RH=%lu,EB=%lu,SP=%u,OA=%u,CA=%u,OS=%lu,CS=%lu]",
+                 "[$CFG:MT=%lu,PD=%lu,GT=%lu,DW=%lu,PC=%lu,RH=%lu,EB=%lu,SP=%u,O1=%u,C1=%u,O2=%u,C2=%u,OS=%lu,CS=%lu]",
                  (unsigned long)s_app_config.move_timeout_ms,
                  (unsigned long)s_app_config.preopen_delay_ms,
                  (unsigned long)s_app_config.gate_timeout_ms,
@@ -195,8 +215,10 @@ HAL_StatusTypeDef AppConfig_Format(char *buffer, uint16_t buffer_len)
                  (unsigned long)s_app_config.return_home_timeout_ms,
                  (unsigned long)s_app_config.error_blink_ms,
                  s_app_config.motion_speed,
-                 s_app_config.gate_open_angle,
-                 s_app_config.gate_close_angle,
+                 s_app_config.gate1_open_angle,
+                 s_app_config.gate1_close_angle,
+                 s_app_config.gate2_open_angle,
+                 s_app_config.gate2_close_angle,
                  (unsigned long)s_app_config.gate_open_settle_ms,
                  (unsigned long)s_app_config.gate_close_settle_ms);
 

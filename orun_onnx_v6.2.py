@@ -129,8 +129,10 @@ STM32_RUNTIME_CONFIG_DEFAULTS = {
     "RH": 20000,  # 回 home 超时 ms
     "EB": 200,    # 错误状态 LED 闪烁间隔 ms
     "SP": 80,     # 平台移动速度，STM32 端限制 0~90
-    "OA": 20,     # 开门角度，MG90S 保守起始值
-    "CA": 80,     # 关门角度，MG90S 保守起始值
+    "O1": 20,     # PA6 舵机开门角度，SG90/MG90S 保守起始值
+    "C1": 80,     # PA6 舵机关门角度，SG90/MG90S 保守起始值
+    "O2": 20,     # PA7 舵机开门角度，SG90/MG90S 保守起始值
+    "C2": 80,     # PA7 舵机关门角度，SG90/MG90S 保守起始值
     "OS": 600,    # 开门动作等待 ms
     "CS": 600,    # 关门动作等待 ms
 }
@@ -144,8 +146,10 @@ STM32_RUNTIME_CONFIG_LIMITS = {
     "RH": (0, 120000),
     "EB": (0, 120000),
     "SP": (0, 90),
-    "OA": (0, 180),
-    "CA": (0, 180),
+    "O1": (0, 180),
+    "C1": (0, 180),
+    "O2": (0, 180),
+    "C2": (0, 180),
     "OS": (0, 10000),
     "CS": (0, 10000),
 }
@@ -375,7 +379,7 @@ def load_stm32_runtime_config():
 
 def build_stm32_config_command(cfg):
     """构造 STM32 运行时配置命令。"""
-    ordered_keys = ["MT", "PD", "GT", "DW", "PC", "RH", "EB", "SP", "OA", "CA", "OS", "CS"]
+    ordered_keys = ["MT", "PD", "GT", "DW", "PC", "RH", "EB", "SP", "O1", "C1", "O2", "C2", "OS", "CS"]
     body = ",".join(f"{key}={int(cfg[key])}" for key in ordered_keys)
     return f"[$CFG:{body}]"
 
@@ -467,7 +471,9 @@ def send_stm32_runtime_config_if_needed(ser, force=False):
     queue_stm32_command(CMD_OPI_PING)
     queue_stm32_command(build_home_command())
     queue_stm32_command(build_stm32_config_command(stm32_config_current))
-    log_event("已排队 STM32 启动握手与 HOME/运行时配置")
+    if force:
+        queue_stm32_command("[$INIT_GATE]")
+    log_event("已排队 STM32 启动握手与 HOME/运行时配置" + ("，并初始化闸门" if force else ""))
     return True
 
 
